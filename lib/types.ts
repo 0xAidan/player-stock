@@ -22,6 +22,15 @@ export interface PlayerStats {
   receptions?: number;
 }
 
+export interface PlayerStakingPosition {
+  player: string;
+  amount: number;
+  startTime: number;
+  lockEndTime: number;
+  lastRewardClaim: number;
+  isActive: boolean;
+}
+
 export interface Portfolio {
   playerId: string;
   tokensOwned: number;
@@ -38,4 +47,12 @@ export interface Trade {
   price: number;
   timestamp: Date;
   txHash?: string;
+}
+
+export interface StakingRewards {
+  playerId: string;
+  pendingRewards: number;
+  performanceMultiplier: number;
+  baseReward: number;
+  totalReward: number;
 }

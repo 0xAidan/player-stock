@@ -3,23 +3,19 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
-    using SafeMath for uint256;
     
     // Tokenomics Constants
     uint256 public constant INITIAL_SUPPLY = 50_000_000 * 10**18; // 50M tokens
     uint256 public constant NFL_WEEK_DURATION = 7 days; // 1 week lock period
-    uint256 public constant TRADING_FEE_BPS = 25; // 0.25% trading fee
-    uint256 public constant STAKING_REWARD_BPS = 50; // 0.5% weekly staking reward
-    uint256 public constant MAX_BURN_RATE_BPS = 100; // 1% max burn rate
+    uint256 public constant TRADING_FEE_BPS = 25; // 0.25% trading fee (FIXED)
+    uint256 public constant BASE_STAKING_REWARD_BPS = 50; // 0.5% base staking reward
     uint256 public constant MIN_PPR_FOR_BURN = 1; // Minimum PPR points to trigger burn
     
     // Protocol state
-    uint256 public totalStaked;
     uint256 public totalTradingFees;
     uint256 public currentWeek;
     uint256 public lastWeekUpdate;
@@ -34,11 +30,12 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         uint256 lastWeekUpdate;
     }
     
-    struct StakingPosition {
-        uint256 amount;
-        uint256 startTime;
-        uint256 lockEndTime;
-        uint256 lastRewardClaim;
+    struct PlayerStakingPosition {
+        address player;           // Which player's tokens are staked
+        uint256 amount;          // Amount of player tokens staked
+        uint256 startTime;       // When staking started
+        uint256 lockEndTime;     // When lock period ends
+        uint256 lastRewardClaim; // Last week rewards were claimed
         bool isActive;
     }
     
@@ -52,7 +49,8 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     }
     
     mapping(address => PlayerStats) public playerStats;
-    mapping(address => StakingPosition) public stakingPositions;
+    mapping(address => PlayerStakingPosition[]) public userPlayerStakes;
+    mapping(address => uint256) public playerTotalStaked; // Total staked per player
     mapping(uint256 => WeekData) public weekData; // week number => week data
     address[] public activePlayers;
     
@@ -61,13 +59,13 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     event WeekUpdated(address indexed player, uint256 pprPoints, uint256 burnAmount, uint256 emissionAmount);
     event TokensBurned(address indexed player, uint256 amount, uint256 pprPoints);
     event TokensEmitted(address indexed player, uint256 amount, uint256 pprPoints);
-    event Staked(address indexed user, uint256 amount, uint256 lockEndTime);
-    event Unstaked(address indexed user, uint256 amount);
-    event RewardsClaimed(address indexed user, uint256 amount);
+    event PlayerStaked(address indexed user, address indexed player, uint256 amount, uint256 lockEndTime);
+    event PlayerUnstaked(address indexed user, address indexed player, uint256 amount);
+    event PlayerRewardsClaimed(address indexed user, address indexed player, uint256 amount);
     event TradingFeeCollected(uint256 amount);
     event WeekProcessed(uint256 weekNumber, uint256 totalBurn, uint256 totalEmission, uint256 stakingRewards);
     
-    constructor() ERC20("Player Stock Token", "PST") {
+    constructor() ERC20("Player Stock Token", "PST") Ownable(msg.sender) {
         _mint(msg.sender, INITIAL_SUPPLY);
         currentWeek = 1;
         lastWeekUpdate = block.timestamp;
@@ -116,9 +114,9 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         
         // Update week data
         WeekData storage week = weekData[currentWeek];
-        week.totalPPR = week.totalPPR.add(pprPoints);
-        week.totalBurnAmount = week.totalBurnAmount.add(burnAmount);
-        week.totalEmissionAmount = week.totalEmissionAmount.add(emissionAmount);
+        week.totalPPR = week.totalPPR + pprPoints;
+        week.totalBurnAmount = week.totalBurnAmount + burnAmount;
+        week.totalEmissionAmount = week.totalEmissionAmount + emissionAmount;
         
         emit WeekUpdated(player, pprPoints, burnAmount, emissionAmount);
     }
@@ -136,44 +134,46 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         week.isProcessed = true;
         
         // Move to next week
-        currentWeek = currentWeek.add(1);
+        currentWeek = currentWeek + 1;
         lastWeekUpdate = block.timestamp;
         
-        emit WeekProcessed(currentWeek.sub(1), week.totalBurnAmount, week.totalEmissionAmount, stakingRewards);
+        emit WeekProcessed(currentWeek - 1, week.totalBurnAmount, week.totalEmissionAmount, stakingRewards);
     }
     
-    // ========== TOKENOMICS CALCULATIONS ==========
+    // ========== IMPROVED TOKENOMICS CALCULATIONS ==========
     
     function _calculateTokenomics(address player, uint256 pprPoints) internal view returns (uint256 burnAmount, uint256 emissionAmount) {
         PlayerStats storage stats = playerStats[player];
         uint256 playerSupply = balanceOf(player);
         
-        // No burn/emission for 0 PPR (injured players)
+        // No changes for 0 PPR (injured players)
         if (pprPoints == 0) {
             return (0, 0);
         }
         
-        // Calculate performance ratio (current PPR vs last week PPR)
-        uint256 performanceRatio;
+        // Calculate performance change
+        int256 performanceChange;
         if (stats.lastWeekPPR == 0) {
-            performanceRatio = pprPoints; // First week performance
+            performanceChange = int256(pprPoints); // First week
         } else {
-            performanceRatio = pprPoints > stats.lastWeekPPR ? 
-                pprPoints.sub(stats.lastWeekPPR) : 
-                stats.lastWeekPPR.sub(pprPoints);
+            performanceChange = int256(pprPoints) - int256(stats.lastWeekPPR);
         }
         
-        // Dynamic burn rate based on PPR performance
-        // Formula: burnRate = min(MAX_BURN_RATE_BPS, (pprPoints * 10) / 1000)
-        uint256 burnRate = _calculateBurnRate(pprPoints);
+        // Base rate: 0.1% of supply
+        uint256 baseRate = playerSupply * 10 / 10000; // 0.1%
         
-        if (pprPoints > stats.lastWeekPPR) {
-            // Good week - burn tokens
-            burnAmount = playerSupply.mul(burnRate).mul(performanceRatio).div(10000).div(100);
-        } else if (pprPoints < stats.lastWeekPPR) {
-            // Bad week - emit tokens (but at a lower rate)
-            uint256 emissionRate = burnRate.div(2); // Emission is half the burn rate
-            emissionAmount = playerSupply.mul(emissionRate).mul(performanceRatio).div(10000).div(100);
+        if (performanceChange > 0) {
+            // Good performance = BURN tokens (deflationary pressure)
+            // Scale burn by performance improvement
+            uint256 improvement = uint256(performanceChange);
+            uint256 burnMultiplier = _min(improvement * 2, 10); // Max 10x multiplier
+            burnAmount = baseRate * burnMultiplier / 10;
+        } else if (performanceChange < 0) {
+            // Bad performance = EMIT tokens (inflationary pressure)
+            // Scale emission by performance decline (but capped lower)
+            uint256 decline = uint256(-performanceChange);
+            uint256 emissionMultiplier = _min(decline, 5); // Max 5x multiplier
+            emissionAmount = baseRate * emissionMultiplier / 10;
         }
         
         // Ensure minimum PPR threshold for burn
@@ -182,124 +182,150 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         }
     }
     
-    function _calculateBurnRate(uint256 pprPoints) internal pure returns (uint256) {
-        // Formula: burnRate = min(MAX_BURN_RATE_BPS, (pprPoints * 10) / 1000)
-        uint256 calculatedRate = pprPoints.mul(10).div(1000);
-        return calculatedRate > MAX_BURN_RATE_BPS ? MAX_BURN_RATE_BPS : calculatedRate;
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
     
-    // ========== STAKING SYSTEM ==========
+    // ========== PLAYER-SPECIFIC STAKING SYSTEM ==========
     
-    function stake(uint256 amount) external nonReentrant {
+    function stakePlayerTokens(address player, uint256 amount) external nonReentrant {
         require(amount > 0, "Cannot stake 0 tokens");
         require(balanceOf(msg.sender) >= amount, "Insufficient balance");
+        require(playerStats[player].isActive, "Player not found");
         
         // Transfer tokens to contract
         _transfer(msg.sender, address(this), amount);
         
-        // Create or update staking position
-        StakingPosition storage position = stakingPositions[msg.sender];
+        // Create staking position
+        PlayerStakingPosition memory position = PlayerStakingPosition({
+            player: player,
+            amount: amount,
+            startTime: block.timestamp,
+            lockEndTime: block.timestamp + NFL_WEEK_DURATION,
+            lastRewardClaim: currentWeek,
+            isActive: true
+        });
         
-        if (position.isActive) {
-            // Add to existing position
-            position.amount = position.amount.add(amount);
-        } else {
-            // Create new position
-            position.amount = amount;
-            position.startTime = block.timestamp;
-            position.lockEndTime = block.timestamp.add(NFL_WEEK_DURATION);
-            position.lastRewardClaim = currentWeek;
-            position.isActive = true;
-        }
+        userPlayerStakes[msg.sender].push(position);
+        playerTotalStaked[player] = playerTotalStaked[player] + amount;
         
-        totalStaked = totalStaked.add(amount);
-        emit Staked(msg.sender, amount, position.lockEndTime);
+        emit PlayerStaked(msg.sender, player, amount, position.lockEndTime);
     }
     
-    function unstake() external nonReentrant {
-        StakingPosition storage position = stakingPositions[msg.sender];
-        require(position.isActive, "No active staking position");
+    function unstakePlayerTokens(uint256 stakeIndex) external nonReentrant {
+        require(stakeIndex < userPlayerStakes[msg.sender].length, "Invalid stake index");
+        
+        PlayerStakingPosition storage position = userPlayerStakes[msg.sender][stakeIndex];
+        require(position.isActive, "Stake not active");
         require(block.timestamp >= position.lockEndTime, "Lock period not ended");
         
         uint256 stakedAmount = position.amount;
+        address player = position.player;
         
         // Claim any pending rewards first
-        uint256 pendingRewards = _calculatePendingRewards(msg.sender);
+        uint256 pendingRewards = calculatePlayerStakingRewards(msg.sender, stakeIndex);
         if (pendingRewards > 0) {
             _mint(msg.sender, pendingRewards);
-            emit RewardsClaimed(msg.sender, pendingRewards);
+            emit PlayerRewardsClaimed(msg.sender, player, pendingRewards);
         }
         
         // Reset position
-        position.amount = 0;
         position.isActive = false;
-        
-        totalStaked = totalStaked.sub(stakedAmount);
+        playerTotalStaked[player] = playerTotalStaked[player] - stakedAmount;
         
         // Transfer staked tokens back
         _transfer(address(this), msg.sender, stakedAmount);
-        emit Unstaked(msg.sender, stakedAmount);
+        emit PlayerUnstaked(msg.sender, player, stakedAmount);
     }
     
-    function claimRewards() external nonReentrant {
-        uint256 pendingRewards = _calculatePendingRewards(msg.sender);
+    function claimPlayerRewards(uint256 stakeIndex) external nonReentrant {
+        require(stakeIndex < userPlayerStakes[msg.sender].length, "Invalid stake index");
+        
+        PlayerStakingPosition storage position = userPlayerStakes[msg.sender][stakeIndex];
+        require(position.isActive, "Stake not active");
+        
+        uint256 pendingRewards = calculatePlayerStakingRewards(msg.sender, stakeIndex);
         require(pendingRewards > 0, "No rewards to claim");
         
-        StakingPosition storage position = stakingPositions[msg.sender];
         position.lastRewardClaim = currentWeek;
         
         _mint(msg.sender, pendingRewards);
-        emit RewardsClaimed(msg.sender, pendingRewards);
+        emit PlayerRewardsClaimed(msg.sender, position.player, pendingRewards);
     }
     
-    function _calculatePendingRewards(address user) internal view returns (uint256) {
-        StakingPosition storage position = stakingPositions[user];
-        if (!position.isActive || totalStaked == 0) return 0;
+    function calculatePlayerStakingRewards(address user, uint256 stakeIndex) public view returns (uint256) {
+        if (stakeIndex >= userPlayerStakes[user].length) return 0;
         
-        uint256 weeksSinceLastClaim = currentWeek.sub(position.lastRewardClaim);
+        PlayerStakingPosition storage position = userPlayerStakes[user][stakeIndex];
+        if (!position.isActive) return 0;
+        
+        uint256 weeksSinceLastClaim = currentWeek - position.lastRewardClaim;
         if (weeksSinceLastClaim == 0) return 0;
         
-        // Calculate rewards based on staked amount and trading fees
-        uint256 userShare = position.amount.mul(1e18).div(totalStaked);
-        uint256 weeklyReward = totalTradingFees.mul(STAKING_REWARD_BPS).div(10000);
-        uint256 userReward = weeklyReward.mul(userShare).div(1e18);
+        // Base reward: 0.5% of staked amount per week
+        uint256 baseReward = position.amount * BASE_STAKING_REWARD_BPS / 10000;
         
-        return userReward.mul(weeksSinceLastClaim);
+        // Performance multiplier based on player's recent performance
+        uint256 performanceMultiplier = _calculatePerformanceMultiplier(position.player);
+        
+        uint256 totalReward = baseReward * performanceMultiplier / 100;
+        return totalReward * weeksSinceLastClaim;
+    }
+    
+    function _calculatePerformanceMultiplier(address player) internal view returns (uint256) {
+        PlayerStats storage stats = playerStats[player];
+        
+        if (stats.currentWeekPPR == 0) {
+            return 100; // Base multiplier for new players
+        }
+        
+        // Compare current week to last week
+        if (stats.currentWeekPPR > stats.lastWeekPPR) {
+            // Good performance = higher rewards
+            uint256 improvement = stats.currentWeekPPR - stats.lastWeekPPR;
+            uint256 bonus = _min(improvement * 5, 100); // Max 100% bonus
+            return 100 + bonus; // 100% to 200%
+        } else if (stats.currentWeekPPR < stats.lastWeekPPR) {
+            // Bad performance = lower rewards
+            uint256 decline = stats.lastWeekPPR - stats.currentWeekPPR;
+            uint256 penalty = _min(decline * 3, 80); // Max 80% penalty
+            return 100 > penalty ? 100 - penalty : 20; // 20% to 100%
+        }
+        
+        return 100; // Same performance = base rewards
     }
     
     function _distributeStakingRewards() internal returns (uint256) {
-        if (totalStaked == 0) return 0;
-        
-        uint256 totalRewards = totalTradingFees.mul(STAKING_REWARD_BPS).div(10000);
-        totalTradingFees = totalTradingFees.sub(totalRewards);
+        uint256 totalRewards = totalTradingFees * BASE_STAKING_REWARD_BPS / 10000;
+        totalTradingFees = totalTradingFees - totalRewards;
         
         return totalRewards;
     }
     
-    // ========== TRADING FEE SYSTEM ==========
+    // ========== SIMPLIFIED TRADING FEE SYSTEM ==========
     
-    function _beforeTokenTransfer(address from, address to, uint256 amount)
+    function _update(address from, address to, uint256 amount)
         internal
         whenNotPaused
         override
     {
-        super._beforeTokenTransfer(from, to, amount);
-        
-        // Apply trading fee (exclude minting, burning, and staking operations)
+        // Apply fixed trading fee (exclude minting, burning, and staking operations)
         if (from != address(0) && to != address(0) && 
             from != address(this) && to != address(this)) {
             
-            uint256 feeAmount = amount.mul(TRADING_FEE_BPS).div(10000);
-            uint256 transferAmount = amount.sub(feeAmount);
+            uint256 feeAmount = amount * TRADING_FEE_BPS / 10000;
+            uint256 transferAmount = amount - feeAmount;
             
             // Transfer fee to contract
             _transfer(from, address(this), feeAmount);
-            totalTradingFees = totalTradingFees.add(feeAmount);
+            totalTradingFees = totalTradingFees + feeAmount;
             
             emit TradingFeeCollected(feeAmount);
             
-            // Update the actual transfer amount
-            amount = transferAmount;
+            // Update with the reduced amount
+            super._update(from, to, transferAmount);
+        } else {
+            super._update(from, to, amount);
         }
     }
     
@@ -308,7 +334,7 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     function _burnTokens(address player, uint256 burnAmount, uint256 pprPoints) internal {
         if (burnAmount > 0) {
             _burn(player, burnAmount);
-            playerStats[player].totalBurned = playerStats[player].totalBurned.add(burnAmount);
+            playerStats[player].totalBurned = playerStats[player].totalBurned + burnAmount;
             emit TokensBurned(player, burnAmount, pprPoints);
         }
     }
@@ -316,7 +342,7 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     function _emitTokens(address player, uint256 emissionAmount, uint256 pprPoints) internal {
         if (emissionAmount > 0) {
             _mint(player, emissionAmount);
-            playerStats[player].totalEmitted = playerStats[player].totalEmitted.add(emissionAmount);
+            playerStats[player].totalEmitted = playerStats[player].totalEmitted + emissionAmount;
             emit TokensEmitted(player, emissionAmount, pprPoints);
         }
     }
@@ -331,20 +357,20 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         return playerStats[player];
     }
     
-    function getStakingPosition(address user) external view returns (StakingPosition memory) {
-        return stakingPositions[user];
+    function getUserPlayerStakes(address user) external view returns (PlayerStakingPosition[] memory) {
+        return userPlayerStakes[user];
+    }
+    
+    function getPlayerTotalStaked(address player) external view returns (uint256) {
+        return playerTotalStaked[player];
     }
     
     function getWeekData(uint256 week) external view returns (WeekData memory) {
         return weekData[week];
     }
     
-    function getPendingRewards(address user) external view returns (uint256) {
-        return _calculatePendingRewards(user);
-    }
-    
-    function getBurnRateForPPR(uint256 pprPoints) external pure returns (uint256) {
-        return _calculateBurnRate(pprPoints);
+    function getPerformanceMultiplier(address player) external view returns (uint256) {
+        return _calculatePerformanceMultiplier(player);
     }
     
     // ========== ADMIN FUNCTIONS ==========
