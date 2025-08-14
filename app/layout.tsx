@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import HydrationSafe from '@/components/HydrationSafe'
+import Header from '@/components/Header'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -20,7 +21,10 @@ export default function RootLayout({
       <body className={inter.className} suppressHydrationWarning={true}>
         <div className="min-h-screen bg-gray-50">
           <HydrationSafe>
-            {children}
+            <Header />
+            <main>
+              {children}
+            </main>
           </HydrationSafe>
         </div>
       </body>

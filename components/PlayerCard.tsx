@@ -13,7 +13,7 @@ export default function PlayerCard({ player, onTrade }: PlayerCardProps) {
   const priceChange = pprChange > 0 ? 'positive' : pprChange < 0 ? 'negative' : 'neutral';
 
   return (
-    <div className="card hover:shadow-lg transition-shadow cursor-pointer">
+    <div className="card-hover">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-3">
           {player.imageUrl && (
