@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Lock, Unlock, Coins, TrendingUp, TrendingDown } from 'lucide-react';
+import { Lock, Unlock, Coins, TrendingUp, TrendingDown, BarChart3, Target } from 'lucide-react';
 import { Player } from '@/lib/types';
 
 interface PlayerStakingPosition {
@@ -11,6 +11,21 @@ interface PlayerStakingPosition {
   lockEndTime: number;
   lastRewardClaim: number;
   isActive: boolean;
+  performanceMultiplier: number; // Frozen multiplier at stake time
+}
+
+interface LeagueStats {
+  totalActivePlayers: number;
+  totalPPR: number;
+  averagePPR: number;
+  standardDeviation: number;
+  totalVariance: number;
+}
+
+interface SupplyInfo {
+  total: number;
+  circulating: number;
+  locked: number;
 }
 
 interface StakingInterfaceProps {
@@ -21,7 +36,10 @@ interface StakingInterfaceProps {
   onClaimRewards: (stakeIndex: number) => Promise<void>;
   getUserStakes: (userAddress: string) => Promise<PlayerStakingPosition[]>;
   getPendingRewards: (userAddress: string, stakeIndex: number) => Promise<number>;
-  getPerformanceMultiplier: (playerId: string) => Promise<number>;
+  getStakingMultiplier: (playerId: string) => Promise<number>;
+  getPerformanceScore: (playerId: string) => Promise<number>;
+  getCurrentLeagueStats: () => Promise<LeagueStats>;
+  getSupplyInfo: () => Promise<SupplyInfo>;
 }
 
 export default function StakingInterface({
@@ -32,19 +50,26 @@ export default function StakingInterface({
   onClaimRewards,
   getUserStakes,
   getPendingRewards,
-  getPerformanceMultiplier
+  getStakingMultiplier,
+  getPerformanceScore,
+  getCurrentLeagueStats,
+  getSupplyInfo
 }: StakingInterfaceProps) {
   const [userStakes, setUserStakes] = useState<PlayerStakingPosition[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>('');
   const [stakeAmount, setStakeAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [performanceMultipliers, setPerformanceMultipliers] = useState<Record<string, number>>({});
+  const [stakingMultipliers, setStakingMultipliers] = useState<Record<string, number>>({});
+  const [performanceScores, setPerformanceScores] = useState<Record<string, number>>({});
+  const [leagueStats, setLeagueStats] = useState<LeagueStats | null>(null);
+  const [supplyInfo, setSupplyInfo] = useState<SupplyInfo | null>(null);
 
   useEffect(() => {
     if (userAddress) {
       loadUserStakes();
-      loadPerformanceMultipliers();
+      loadPerformanceData();
+      loadSupplyInfo();
     }
   }, [userAddress]);
 
@@ -58,20 +83,45 @@ export default function StakingInterface({
     }
   };
 
-  const loadPerformanceMultipliers = async () => {
+  const loadPerformanceData = async () => {
     if (!players || players.length === 0) return;
     
-    const multipliers: Record<string, number> = {};
-    for (const player of players) {
-      try {
-        const multiplier = await getPerformanceMultiplier(player.id);
-        multipliers[player.id] = multiplier;
-      } catch (err) {
-        console.error(`Error loading multiplier for ${player.id}:`, err);
-        multipliers[player.id] = 100; // Default to base multiplier
+    try {
+      // Load staking multipliers
+      const multipliers: Record<string, number> = {};
+      const scores: Record<string, number> = {};
+      
+      for (const player of players) {
+        try {
+          const multiplier = await getStakingMultiplier(player.id);
+          const score = await getPerformanceScore(player.id);
+          multipliers[player.id] = multiplier;
+          scores[player.id] = score;
+        } catch (err) {
+          console.error(`Error loading data for ${player.id}:`, err);
+          multipliers[player.id] = 100; // Default to base multiplier
+          scores[player.id] = 0;
+        }
       }
+      
+      setStakingMultipliers(multipliers);
+      setPerformanceScores(scores);
+      
+      // Load league stats
+      const league = await getCurrentLeagueStats();
+      setLeagueStats(league);
+    } catch (err) {
+      console.error('Error loading performance data:', err);
     }
-    setPerformanceMultipliers(multipliers);
+  };
+
+  const loadSupplyInfo = async () => {
+    try {
+      const supply = await getSupplyInfo();
+      setSupplyInfo(supply);
+    } catch (err) {
+      console.error('Error loading supply info:', err);
+    }
   };
 
   const handleStake = async (e: React.FormEvent) => {
@@ -96,6 +146,7 @@ export default function StakingInterface({
       setStakeAmount('');
       setSelectedPlayer('');
       await loadUserStakes();
+      await loadSupplyInfo(); // Refresh supply info after staking
     } catch (err: any) {
       setError(err.message || 'Staking failed. Please try again.');
     } finally {
@@ -112,6 +163,7 @@ export default function StakingInterface({
     try {
       await onUnstake(stakeIndex);
       await loadUserStakes();
+      await loadSupplyInfo(); // Refresh supply info after unstaking
     } catch (err: any) {
       setError(err.message || 'Unstaking failed. Please try again.');
     } finally {
@@ -150,19 +202,93 @@ export default function StakingInterface({
   };
 
   const getMultiplierColor = (multiplier: number) => {
-    if (multiplier > 100) return 'text-green-600';
-    if (multiplier < 100) return 'text-red-600';
-    return 'text-gray-600';
+    if (multiplier >= 150) return 'text-purple-600'; // Elite tier
+    if (multiplier >= 120) return 'text-blue-600'; // Above average
+    if (multiplier >= 100) return 'text-green-600'; // Average
+    if (multiplier >= 80) return 'text-yellow-600'; // Below average
+    return 'text-red-600'; // Poor performer
   };
 
   const getMultiplierIcon = (multiplier: number) => {
-    if (multiplier > 100) return <TrendingUp className="w-4 h-4" />;
-    if (multiplier < 100) return <TrendingDown className="w-4 h-4" />;
-    return null;
+    if (multiplier >= 150) return <Target className="w-4 h-4" />; // Elite
+    if (multiplier >= 120) return <TrendingUp className="w-4 h-4" />; // Above average
+    if (multiplier >= 100) return <BarChart3 className="w-4 h-4" />; // Average
+    if (multiplier >= 80) return <TrendingDown className="w-4 h-4" />; // Below average
+    return <TrendingDown className="w-4 h-4" />; // Poor
+  };
+
+  const getMultiplierTier = (multiplier: number) => {
+    if (multiplier >= 150) return 'Elite';
+    if (multiplier >= 120) return 'Above Average';
+    if (multiplier >= 100) return 'Average';
+    if (multiplier >= 80) return 'Below Average';
+    return 'Poor Performer';
+  };
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toFixed(0);
+  };
+
+  const formatPercentage = (num: number) => {
+    return (num / 100).toFixed(1) + '%';
   };
 
   return (
     <div className="space-y-6">
+      {/* Supply Overview */}
+      {supplyInfo && (
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2" />
+            Supply Overview
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">{formatNumber(supplyInfo.total)}</div>
+              <div className="text-sm text-gray-600">Total Supply</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">{formatNumber(supplyInfo.circulating)}</div>
+              <div className="text-sm text-gray-600">Circulating</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">{formatNumber(supplyInfo.locked)}</div>
+              <div className="text-sm text-gray-600">Locked (Staked)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* League Statistics */}
+      {leagueStats && (
+        <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <Target className="w-5 h-5 mr-2" />
+            League Statistics
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-blue-600">{leagueStats.totalActivePlayers}</div>
+              <div className="text-xs text-gray-600">Active Players</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-green-600">{leagueStats.averagePPR.toFixed(1)}</div>
+              <div className="text-xs text-gray-600">Avg PPR</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-purple-600">{leagueStats.standardDeviation.toFixed(1)}</div>
+              <div className="text-xs text-gray-600">Std Dev</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-lg font-bold text-orange-600">{formatNumber(leagueStats.totalVariance)}</div>
+              <div className="text-xs text-gray-600">Total Variance</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Staking Form */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-bold mb-4">Stake Player Tokens</h2>
@@ -213,24 +339,44 @@ export default function StakingInterface({
             </div>
           </div>
 
-          {/* Performance Multiplier Display */}
-          {selectedPlayer && performanceMultipliers[selectedPlayer] && (
-            <div className="bg-blue-50 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Performance Multiplier:</span>
-                <div className={`flex items-center space-x-1 font-semibold ${getMultiplierColor(performanceMultipliers[selectedPlayer])}`}>
-                  {getMultiplierIcon(performanceMultipliers[selectedPlayer])}
-                  <span>{performanceMultipliers[selectedPlayer]}%</span>
+          {/* Enhanced Performance Display */}
+          {selectedPlayer && stakingMultipliers[selectedPlayer] && (
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-600">Performance Score:</span>
+                    <div className="font-semibold text-blue-600">
+                      {performanceScores[selectedPlayer]?.toFixed(1) || '0.0'}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Staking Multiplier:</span>
+                    <div className={`flex items-center space-x-1 font-semibold ${getMultiplierColor(stakingMultipliers[selectedPlayer])}`}>
+                      {getMultiplierIcon(stakingMultipliers[selectedPlayer])}
+                      <span>{formatPercentage(stakingMultipliers[selectedPlayer])}</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Tier:</div>
+                  <div className={`font-semibold ${getMultiplierColor(stakingMultipliers[selectedPlayer])}`}>
+                    {getMultiplierTier(stakingMultipliers[selectedPlayer])}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {stakingMultipliers[selectedPlayer] >= 150 
+                      ? 'Elite performers get maximum rewards'
+                      : stakingMultipliers[selectedPlayer] >= 120
+                      ? 'Above average performance rewarded'
+                      : stakingMultipliers[selectedPlayer] >= 100
+                      ? 'Average performance - standard rewards'
+                      : stakingMultipliers[selectedPlayer] >= 80
+                      ? 'Below average - reduced rewards'
+                      : 'Poor performance - minimal rewards'
+                    }
+                  </div>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {performanceMultipliers[selectedPlayer] > 100 
-                  ? 'Higher rewards due to good performance'
-                  : performanceMultipliers[selectedPlayer] < 100
-                  ? 'Lower rewards due to poor performance'
-                  : 'Base reward rate'
-                }
-              </p>
             </div>
           )}
 
@@ -245,7 +391,7 @@ export default function StakingInterface({
           <button
             type="submit"
             disabled={!selectedPlayer || !stakeAmount || isProcessing || !userAddress}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             {isProcessing ? (
               <div className="flex items-center justify-center">
@@ -268,7 +414,7 @@ export default function StakingInterface({
         ) : (
           <div className="space-y-4">
             {userStakes.map((stake, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="font-semibold">{getPlayerName(stake.player)}</h3>
@@ -296,20 +442,34 @@ export default function StakingInterface({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">Multiplier:</span>
-                    <div className={`flex items-center space-x-1 font-semibold ${getMultiplierColor(performanceMultipliers[stake.player] || 100)}`}>
-                      {getMultiplierIcon(performanceMultipliers[stake.player] || 100)}
-                      <span>{performanceMultipliers[stake.player] || 100}%</span>
+                <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-600">Frozen Multiplier:</span>
+                      <div className={`flex items-center space-x-1 font-semibold ${getMultiplierColor(stake.performanceMultiplier)}`}>
+                        {getMultiplierIcon(stake.performanceMultiplier)}
+                        <span>{formatPercentage(stake.performanceMultiplier)}</span>
+                      </div>
                     </div>
+                    <div className="text-xs text-gray-500">
+                      {getMultiplierTier(stake.performanceMultiplier)}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Multiplier locked at stake time - won't change during stake period
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    Current Performance Score: {performanceScores[stake.player]?.toFixed(1) || '0.0'}
                   </div>
                   
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleClaimRewards(index)}
                       disabled={isProcessing}
-                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
                     >
                       Claim Rewards
                     </button>
@@ -318,7 +478,7 @@ export default function StakingInterface({
                       <button
                         onClick={() => handleUnstake(index)}
                         disabled={isProcessing}
-                        className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
+                        className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
                       >
                         Unstake
                       </button>

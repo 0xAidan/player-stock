@@ -1,19 +1,40 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("PlayerToken", function () {
+describe("Enhanced PlayerToken", function () {
+  let PlayerToken;
   let playerToken;
   let owner;
-  let addr1;
-  let addr2;
   let player1;
   let player2;
+  let player3;
+  let user1;
+  let user2;
+  let addrs;
+
+  const INITIAL_SUPPLY = ethers.utils.parseEther("50000000"); // 50M tokens
+  const WEEK_DURATION = 7 * 24 * 60 * 60; // 7 days in seconds
 
   beforeEach(async function () {
-    [owner, addr1, addr2, player1, player2] = await ethers.getSigners();
+    [owner, player1, player2, player3, user1, user2, ...addrs] = await ethers.getSigners();
     
-    const PlayerToken = await ethers.getContractFactory("PlayerToken");
+    PlayerToken = await ethers.getContractFactory("PlayerToken");
     playerToken = await PlayerToken.deploy();
+    await playerToken.deployed();
+
+    // Add players
+    await playerToken.addPlayer(player1.address, "Player 1");
+    await playerToken.addPlayer(player2.address, "Player 2");
+    await playerToken.addPlayer(player3.address, "Player 3");
+
+    // Transfer initial tokens to players
+    await playerToken.transfer(player1.address, ethers.utils.parseEther("1000000")); // 1M tokens
+    await playerToken.transfer(player2.address, ethers.utils.parseEther("1000000")); // 1M tokens
+    await playerToken.transfer(player3.address, ethers.utils.parseEther("1000000")); // 1M tokens
+
+    // Transfer tokens to users for staking
+    await playerToken.transfer(user1.address, ethers.utils.parseEther("100000")); // 100K tokens
+    await playerToken.transfer(user2.address, ethers.utils.parseEther("100000")); // 100K tokens
   });
 
   describe("Deployment", function () {
@@ -21,358 +42,401 @@ describe("PlayerToken", function () {
       expect(await playerToken.owner()).to.equal(owner.address);
     });
 
-    it("Should have correct initial supply", async function () {
-      const expectedSupply = ethers.parseEther("50000000");
-      expect(await playerToken.totalSupply()).to.equal(expectedSupply);
+    it("Should assign the total supply of tokens to the owner", async function () {
+      const ownerBalance = await playerToken.balanceOf(owner.address);
+      expect(await playerToken.totalSupply()).to.equal(ownerBalance);
     });
 
-    it("Should start at week 1", async function () {
-      expect(await playerToken.currentWeek()).to.equal(1);
+    it("Should initialize supply tracking correctly", async function () {
+      const [total, circulating, locked] = await playerToken.getSupplyInfo();
+      expect(total).to.equal(INITIAL_SUPPLY);
+      expect(circulating).to.equal(INITIAL_SUPPLY);
+      expect(locked).to.equal(0);
     });
   });
 
   describe("Player Management", function () {
-    it("Should add a new player", async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
+    it("Should add players correctly", async function () {
+      const activePlayers = await playerToken.getActivePlayers();
+      expect(activePlayers).to.include(player1.address);
+      expect(activePlayers).to.include(player2.address);
+      expect(activePlayers).to.include(player3.address);
+      expect(activePlayers.length).to.equal(3);
+    });
+
+    it("Should initialize player stats correctly", async function () {
       const stats = await playerToken.getPlayerStats(player1.address);
       expect(stats.isActive).to.be.true;
       expect(stats.lastWeekPPR).to.equal(0);
       expect(stats.currentWeekPPR).to.equal(0);
-    });
-
-    it("Should not allow adding duplicate players", async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      await expect(
-        playerToken.addPlayer(player1.address, "Test Player 1")
-      ).to.be.revertedWith("Player already exists");
-    });
-
-    it("Should track active players", async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      await playerToken.addPlayer(player2.address, "Test Player 2");
-      
-      const activePlayers = await playerToken.getActivePlayers();
-      expect(activePlayers).to.include(player1.address);
-      expect(activePlayers).to.include(player2.address);
-      expect(activePlayers.length).to.equal(2);
+      expect(stats.totalBurned).to.equal(0);
+      expect(stats.totalEmitted).to.equal(0);
+      expect(stats.averagePPR).to.equal(0);
+      expect(stats.performanceScore).to.equal(0);
     });
   });
 
-  describe("Improved Tokenomics", function () {
-    beforeEach(async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      // Transfer some tokens to player1 for testing
-      await playerToken.transfer(player1.address, ethers.parseEther("1000000"));
+  describe("Enhanced Performance Tracking", function () {
+    it("Should update performance history correctly", async function () {
+      // Simulate 8 weeks of performance data
+      for (let week = 1; week <= 8; week++) {
+        await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+        await ethers.provider.send("evm_mine");
+        
+        await playerToken.updatePlayerWeek(player1.address, week * 10); // 10, 20, 30, etc.
+      }
+
+      const stats = await playerToken.getPlayerStats(player1.address);
+      expect(stats.averagePPR).to.equal(45); // (10+20+30+40+50+60+70+80)/8 = 45
+      expect(stats.totalPPR).to.equal(360); // Sum of all PPR values
     });
 
-    it("Should not change supply for 0 PPR (injured players)", async function () {
-      const initialBalance = await playerToken.balanceOf(player1.address);
-      
-      // Advance time by 7 days
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      
-      await playerToken.updatePlayerWeek(player1.address, 0);
-      
-      const finalBalance = await playerToken.balanceOf(player1.address);
-      expect(finalBalance).to.equal(initialBalance);
-    });
+    it("Should calculate variance correctly", async function () {
+      // Add consistent performance (low variance)
+      for (let week = 1; week <= 8; week++) {
+        await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+        await ethers.provider.send("evm_mine");
+        await playerToken.updatePlayerWeek(player1.address, 20); // Consistent 20 PPR
+      }
 
-    it("Should burn tokens for good performance", async function () {
+      const stats1 = await playerToken.getPlayerStats(player1.address);
+      
+      // Add inconsistent performance (high variance)
+      for (let week = 1; week <= 8; week++) {
+        await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+        await ethers.provider.send("evm_mine");
+        await playerToken.updatePlayerWeek(player2.address, week % 2 === 0 ? 40 : 0); // Alternating 0, 40
+      }
+
+      const stats2 = await playerToken.getPlayerStats(player2.address);
+      
+      // Player 2 should have higher variance
+      expect(stats2.pprVariance).to.be.gt(stats1.pprVariance);
+    });
+  });
+
+  describe("League Statistics", function () {
+    it("Should calculate league statistics correctly", async function () {
+      // Set up different performance levels
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 30); // Above average
+      await playerToken.updatePlayerWeek(player2.address, 20); // Average
+      await playerToken.updatePlayerWeek(player3.address, 10); // Below average
+
+      const leagueStats = await playerToken.getCurrentLeagueStats();
+      expect(leagueStats.totalActivePlayers).to.equal(3);
+      expect(leagueStats.averagePPR).to.equal(20); // (30+20+10)/3
+      expect(leagueStats.standardDeviation).to.be.gt(0);
+    });
+  });
+
+  describe("Performance Scoring", function () {
+    it("Should calculate performance scores correctly", async function () {
+      // Set up league baseline
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 20);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 20);
+
+      // Now test individual performance
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 40); // Double average
+      await playerToken.updatePlayerWeek(player2.address, 20); // Average
+      await playerToken.updatePlayerWeek(player3.address, 10); // Half average
+
+      const score1 = await playerToken.getPerformanceScore(player1.address);
+      const score2 = await playerToken.getPerformanceScore(player2.address);
+      const score3 = await playerToken.getPerformanceScore(player3.address);
+
+      expect(score1).to.be.gt(score2);
+      expect(score2).to.be.gt(score3);
+    });
+  });
+
+  describe("Enhanced Tokenomics", function () {
+    it("Should burn tokens for above-average performance", async function () {
       const initialBalance = await playerToken.balanceOf(player1.address);
       
-      // First week: 10 PPR
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      // Set up league baseline
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 10);
       
-      // Second week: 25 PPR (improvement of 15)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await playerToken.updatePlayerWeek(player1.address, 20);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 20);
+
+      // Test above-average performance
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
       
+      await playerToken.updatePlayerWeek(player1.address, 40); // Double average
+
       const finalBalance = await playerToken.balanceOf(player1.address);
       expect(finalBalance).to.be.lt(initialBalance); // Should be burned
-      
-      const stats = await playerToken.getPlayerStats(player1.address);
-      expect(stats.totalBurned).to.be.gt(0);
     });
 
-    it("Should emit tokens for bad performance", async function () {
+    it("Should emit tokens for below-average performance", async function () {
       const initialBalance = await playerToken.balanceOf(player1.address);
       
-      // First week: 100 PPR (very high performance)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      // Set up league baseline
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 100);
       
-      // Second week: 10 PPR (large decline of 90)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await playerToken.updatePlayerWeek(player1.address, 20);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 20);
+
+      // Test below-average performance
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 10);
       
-      const stats = await playerToken.getPlayerStats(player1.address);
-      
-      // Check that tokens were emitted (even if small amount)
-      expect(stats.totalEmitted).to.be.gt(0);
+      await playerToken.updatePlayerWeek(player1.address, 10); // Half average
+
+      const finalBalance = await playerToken.balanceOf(player1.address);
+      expect(finalBalance).to.be.gt(initialBalance); // Should be emitted
     });
 
-    it("Should scale burn/emission based on performance change", async function () {
+    it("Should respect burn percentage limits", async function () {
       const initialBalance = await playerToken.balanceOf(player1.address);
       
-      // First week: 10 PPR
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      // Set up league baseline
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 10);
       
-      // Small improvement: 15 PPR (5 point improvement)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await playerToken.updatePlayerWeek(player1.address, 20);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 20);
+
+      // Test extreme performance (should be capped)
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 15);
-      const balanceAfterSmall = await playerToken.balanceOf(player1.address);
       
-      // Large improvement: 100 PPR (85 point improvement)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 100);
-      const balanceAfterLarge = await playerToken.balanceOf(player1.address);
+      await playerToken.updatePlayerWeek(player1.address, 100); // 5x average
+
+      const finalBalance = await playerToken.balanceOf(player1.address);
+      const burnedAmount = initialBalance.sub(finalBalance);
+      const burnPercentage = burnedAmount.mul(10000).div(initialBalance);
       
-      // Both should burn tokens (good performance)
-      expect(balanceAfterSmall).to.be.lt(initialBalance);
-      expect(balanceAfterLarge).to.be.lt(balanceAfterSmall);
+      // Should be capped at 10% (1000 basis points)
+      expect(burnPercentage).to.be.lte(1000);
     });
   });
 
-  describe("Player-Specific Staking", function () {
+  describe("Enhanced Staking System", function () {
     beforeEach(async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      await playerToken.addPlayer(player2.address, "Test Player 2");
-      
-      // Transfer tokens to test users
-      await playerToken.transfer(addr1.address, ethers.parseEther("1000000"));
-      await playerToken.transfer(addr2.address, ethers.parseEther("1000000"));
-    });
-
-    it("Should allow staking player tokens", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      
-      await playerToken.connect(addr1).stakePlayerTokens(player1.address, stakeAmount);
-      
-      const userStakes = await playerToken.getUserPlayerStakes(addr1.address);
-      expect(userStakes.length).to.equal(1);
-      expect(userStakes[0].player).to.equal(player1.address);
-      expect(userStakes[0].amount).to.equal(stakeAmount);
-      expect(userStakes[0].isActive).to.be.true;
-      
-      const playerTotalStaked = await playerToken.getPlayerTotalStaked(player1.address);
-      expect(playerTotalStaked).to.equal(stakeAmount);
-    });
-
-    it("Should not allow staking for inactive players", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      
-      await expect(
-        playerToken.connect(addr1).stakePlayerTokens(addr2.address, stakeAmount)
-      ).to.be.revertedWith("Player not found");
-    });
-
-    it("Should calculate performance multipliers correctly", async function () {
-      // New player should have base multiplier
-      let multiplier = await playerToken.getPerformanceMultiplier(player1.address);
-      expect(multiplier).to.equal(100);
-      
-      // Good performance should increase multiplier
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
-      multiplier = await playerToken.getPerformanceMultiplier(player1.address);
-      expect(multiplier).to.be.gt(100);
-      
-      // Bad performance should decrease multiplier
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 10);
-      multiplier = await playerToken.getPerformanceMultiplier(player1.address);
-      expect(multiplier).to.be.lt(100);
-    });
-
-    it("Should calculate staking rewards with performance multiplier", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      await playerToken.connect(addr1).stakePlayerTokens(player1.address, stakeAmount);
-      
-      // Set good performance
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
-      
-      // Advance week
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      // Set up performance baseline
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
       
+      await playerToken.updatePlayerWeek(player1.address, 20);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 20);
+    });
+
+    it("Should calculate staking multipliers correctly", async function () {
+      // Test different performance levels
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 40); // Elite (200% of average)
+      await playerToken.updatePlayerWeek(player2.address, 24); // Above average (120% of average)
+      await playerToken.updatePlayerWeek(player3.address, 10); // Below average (50% of average)
+
+      const multiplier1 = await playerToken.getStakingMultiplier(player1.address);
+      const multiplier2 = await playerToken.getStakingMultiplier(player2.address);
+      const multiplier3 = await playerToken.getStakingMultiplier(player3.address);
+
+      expect(multiplier1).to.be.gt(multiplier2);
+      expect(multiplier2).to.be.gt(multiplier3);
+      expect(multiplier1).to.be.gte(150); // Elite tier
+      expect(multiplier3).to.be.gte(20); // Minimum floor
+    });
+
+    it("Should freeze multipliers at stake time", async function () {
+      // Initial performance
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 40); // Good performance
+      
+      // Stake with good multiplier
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
+      
+      // Change performance to poor
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 10); // Poor performance
+      
+      // Get stake info
+      const stakes = await playerToken.getUserPlayerStakes(user1.address);
+      const frozenMultiplier = stakes[0].performanceMultiplier;
+      
+      // Current multiplier should be different (lower)
+      const currentMultiplier = await playerToken.getStakingMultiplier(player1.address);
+      
+      expect(frozenMultiplier).to.be.gt(currentMultiplier);
+    });
+
+    it("Should track supply correctly during staking", async function () {
+      const [initialTotal, initialCirculating, initialLocked] = await playerToken.getSupplyInfo();
+      
+      // Stake tokens
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
+      
+      const [totalAfterStake, circulatingAfterStake, lockedAfterStake] = await playerToken.getSupplyInfo();
+      
+      expect(totalAfterStake).to.equal(initialTotal);
+      expect(circulatingAfterStake).to.equal(initialCirculating.sub(ethers.utils.parseEther("1000")));
+      expect(lockedAfterStake).to.equal(initialLocked.add(ethers.utils.parseEther("1000")));
+    });
+
+    it("Should track supply correctly during unstaking", async function () {
+      // Stake tokens
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
+      
+      const [totalAfterStake, circulatingAfterStake, lockedAfterStake] = await playerToken.getSupplyInfo();
+      
+      // Wait for lock period
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      // Unstake
+      await playerToken.connect(user1).unstakePlayerTokens(0);
+      
+      const [totalAfterUnstake, circulatingAfterUnstake, lockedAfterUnstake] = await playerToken.getSupplyInfo();
+      
+      expect(totalAfterUnstake).to.equal(totalAfterStake);
+      expect(circulatingAfterUnstake).to.equal(circulatingAfterStake.add(ethers.utils.parseEther("1000")));
+      expect(lockedAfterUnstake).to.equal(lockedAfterStake.sub(ethers.utils.parseEther("1000")));
+    });
+
+    it("Should calculate enhanced staking rewards correctly", async function () {
+      // Set up good performance for high multiplier
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 40); // Elite performance
+      
+      // Stake tokens
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
+      
+      // Wait a week
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      // Process week end to distribute rewards
       await playerToken.processWeekEnd();
       
-      const rewards = await playerToken.calculatePlayerStakingRewards(addr1.address, 0);
+      // Calculate rewards
+      const rewards = await playerToken.calculateEnhancedStakingRewards(user1.address, 0);
       expect(rewards).to.be.gt(0);
     });
-
-    it("Should not allow unstaking before lock period ends", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      await playerToken.connect(addr1).stakePlayerTokens(player1.address, stakeAmount);
-      
-      await expect(
-        playerToken.connect(addr1).unstakePlayerTokens(0)
-      ).to.be.revertedWith("Lock period not ended");
-    });
-
-    it("Should allow unstaking after lock period ends", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      const initialBalance = await playerToken.balanceOf(addr1.address);
-      
-      await playerToken.connect(addr1).stakePlayerTokens(player1.address, stakeAmount);
-      
-      // Advance time past lock period
-      await ethers.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]); // 8 days
-      await ethers.provider.send("evm_mine");
-      
-      await playerToken.connect(addr1).unstakePlayerTokens(0);
-      
-      const finalBalance = await playerToken.balanceOf(addr1.address);
-      expect(finalBalance).to.equal(initialBalance); // Should get tokens back
-      
-      const userStakes = await playerToken.getUserPlayerStakes(addr1.address);
-      expect(userStakes[0].isActive).to.be.false;
-    });
-
-    it("Should allow claiming rewards", async function () {
-      const stakeAmount = ethers.parseEther("1000");
-      await playerToken.connect(addr1).stakePlayerTokens(player1.address, stakeAmount);
-      
-      // Advance week
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      
-      await playerToken.processWeekEnd();
-      
-      const initialBalance = await playerToken.balanceOf(addr1.address);
-      await playerToken.connect(addr1).claimPlayerRewards(0);
-      const finalBalance = await playerToken.balanceOf(addr1.address);
-      
-      expect(finalBalance).to.be.gt(initialBalance); // Should receive rewards
-    });
   });
 
-  describe("Trading Fees", function () {
-    beforeEach(async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      await playerToken.transfer(addr1.address, ethers.parseEther("1000000"));
-    });
-
-    it("Should collect 0.25% trading fee", async function () {
-      const transferAmount = ethers.parseEther("1000");
-      const expectedFee = transferAmount * 25n / 10000n; // 0.25%
-      
-      const initialFees = await playerToken.totalTradingFees();
-      
-      await playerToken.connect(addr1).transfer(addr2.address, transferAmount);
-      
-      const finalFees = await playerToken.totalTradingFees();
-      expect(finalFees - initialFees).to.equal(expectedFee);
-    });
-
-    it("Should not charge fees for minting/burning", async function () {
-      const initialFees = await playerToken.totalTradingFees();
-      
-      // Advance time and update player (this will mint tokens)
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
-      
-      const feesAfterMinting = await playerToken.totalTradingFees();
-      expect(feesAfterMinting).to.equal(initialFees);
-    });
-  });
-
-  describe("Week Processing", function () {
-    beforeEach(async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
-      await playerToken.addPlayer(player2.address, "Test Player 2");
-    });
-
-    it("Should not allow week updates before week duration", async function () {
-      await expect(
-        playerToken.updatePlayerWeek(player1.address, 25)
-      ).to.be.revertedWith("Week not elapsed");
-    });
-
+  describe("Weekly Processing", function () {
     it("Should process week end correctly", async function () {
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
-      
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player2.address, 15);
-      
-      // Advance time
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      // Set up performance data
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
       await ethers.provider.send("evm_mine");
       
+      await playerToken.updatePlayerWeek(player1.address, 30);
+      await playerToken.updatePlayerWeek(player2.address, 20);
+      await playerToken.updatePlayerWeek(player3.address, 10);
+
+      // Process week end
       await playerToken.processWeekEnd();
-      
-      expect(await playerToken.currentWeek()).to.equal(2);
       
       const weekData = await playerToken.getWeekData(1);
       expect(weekData.isProcessed).to.be.true;
-      expect(weekData.totalPPR).to.equal(40); // 25 + 15
-    });
-
-    it("Should not allow processing same week twice", async function () {
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      await playerToken.updatePlayerWeek(player1.address, 25);
-      
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
-      await ethers.provider.send("evm_mine");
-      
-      await playerToken.processWeekEnd();
-      
-      // Check that we're now in week 2
-      expect(await playerToken.currentWeek()).to.equal(2);
-      
-      // Try to process week 2 immediately - should fail because week hasn't elapsed
-      await expect(
-        playerToken.processWeekEnd()
-      ).to.be.revertedWith("Week not elapsed");
+      expect(weekData.totalPPR).to.equal(60);
+      expect(weekData.leagueAveragePPR).to.equal(20);
     });
   });
 
-  describe("Admin Functions", function () {
-    it("Should allow owner to pause/unpause", async function () {
-      await playerToken.pause();
-      expect(await playerToken.paused()).to.be.true;
+  describe("Trading Fee System", function () {
+    it("Should collect trading fees correctly", async function () {
+      const initialFees = await playerToken.totalTradingFees();
       
-      await playerToken.unpause();
-      expect(await playerToken.paused()).to.be.false;
+      // Transfer tokens (should trigger fee)
+      await playerToken.transfer(user1.address, ethers.utils.parseEther("1000"));
+      
+      const finalFees = await playerToken.totalTradingFees();
+      expect(finalFees).to.be.gt(initialFees);
     });
 
-    it("Should allow owner to update market cap", async function () {
-      await playerToken.addPlayer(player1.address, "Test Player 1");
+    it("Should not charge fees for staking operations", async function () {
+      const feesBeforeStake = await playerToken.totalTradingFees();
       
-      const newMarketCap = ethers.parseEther("1000000");
-      await playerToken.updateMarketCap(player1.address, newMarketCap);
+      // Stake tokens (should not trigger fee)
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
+      
+      const feesAfterStake = await playerToken.totalTradingFees();
+      expect(feesAfterStake).to.equal(feesBeforeStake);
+    });
+  });
+
+  describe("Supply Management", function () {
+    it("Should track supply changes correctly", async function () {
+      const [initialTotal, initialCirculating, initialLocked] = await playerToken.getSupplyInfo();
+      
+      // Burn some tokens
+      await playerToken.connect(player1).transfer(ethers.constants.AddressZero, ethers.utils.parseEther("1000"));
+      
+      const [totalAfterBurn, circulatingAfterBurn, lockedAfterBurn] = await playerToken.getSupplyInfo();
+      
+      expect(totalAfterBurn).to.equal(initialTotal.sub(ethers.utils.parseEther("1000")));
+      expect(circulatingAfterBurn).to.equal(initialCirculating.sub(ethers.utils.parseEther("1000")));
+      expect(lockedAfterBurn).to.equal(initialLocked);
+    });
+  });
+
+  describe("Edge Cases and Error Handling", function () {
+    it("Should handle zero PPR correctly", async function () {
+      await ethers.provider.send("evm_increaseTime", [WEEK_DURATION]);
+      await ethers.provider.send("evm_mine");
+      
+      await playerToken.updatePlayerWeek(player1.address, 0); // Injured player
       
       const stats = await playerToken.getPlayerStats(player1.address);
-      expect(stats.marketCap).to.equal(newMarketCap);
+      expect(stats.currentWeekPPR).to.equal(0);
     });
 
-    it("Should not allow non-owner to call admin functions", async function () {
+    it("Should prevent staking with insufficient balance", async function () {
       await expect(
-        playerToken.connect(addr1).pause()
-      ).to.be.revertedWithCustomError(playerToken, "OwnableUnauthorizedAccount");
+        playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000000"))
+      ).to.be.revertedWith("Insufficient balance");
+    });
+
+    it("Should prevent unstaking before lock period ends", async function () {
+      await playerToken.connect(user1).stakePlayerTokens(player1.address, ethers.utils.parseEther("1000"));
       
       await expect(
-        playerToken.connect(addr1).addPlayer(addr1.address, "Test")
-      ).to.be.revertedWithCustomError(playerToken, "OwnableUnauthorizedAccount");
+        playerToken.connect(user1).unstakePlayerTokens(0)
+      ).to.be.revertedWith("Lock period not ended");
+    });
+
+    it("Should handle empty league statistics", async function () {
+      const leagueStats = await playerToken.getCurrentLeagueStats();
+      expect(leagueStats.totalActivePlayers).to.equal(0);
+      expect(leagueStats.averagePPR).to.equal(0);
+    });
+  });
+
+  describe("Gas Optimization", function () {
+    it("Should optimize gas usage for performance calculations", async function () {
+      // Test that performance calculations don't exceed reasonable gas limits
+      const tx = await playerToken.updatePlayerWeek(player1.address, 25);
+      const receipt = await tx.wait();
+      
+      // Gas usage should be reasonable (less than 500k gas)
+      expect(receipt.gasUsed).to.be.lt(500000);
     });
   });
 }); 

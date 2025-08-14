@@ -1,221 +1,302 @@
-# Player Stock Tokenomics System (Updated)
+# Enhanced Player Stock Tokenomics System
 
 ## Overview
 
-The Player Stock protocol implements an improved hybrid tokenomics system designed to create a sustainable, long-running ecosystem that rewards active participation and aligns incentives between players, traders, and stakers. The system combines **fixed trading fees**, **player-specific staking**, and **performance-based supply changes** to create natural price discovery beyond just market demand.
+The Player Stock protocol now implements a **revolutionary robust tokenomics system** that creates a direct, meaningful relationship between player performance (PPR) and token economics. This system goes far beyond simple weekly burns to create a sophisticated performance-based economy that rewards consistency, punishes volatility, and creates natural price discovery through supply mechanics.
 
-## Core Principles
+## Core Innovations
 
-1. **Simple & Transparent**: Fixed 0.25% trading fee with no complexity
-2. **Performance-Based Supply**: Player token supply adjusts based on NFL performance (PPR points)
-3. **Player-Specific Staking**: Users can stake individual player tokens for performance-based rewards
-4. **Natural Price Discovery**: Supply changes create price pressure beyond just demand
-5. **Injury Protection**: Players with 0 PPR (injured) don't experience supply changes
+### 1. **Direct PPR-to-Burn Relationship**
+- **Meaningful Supply Impact**: 1-10% of circulating supply burned weekly based on performance
+- **Performance-Based Scaling**: Burn rates scale directly with player performance vs league average
+- **Supply Separation**: Clear distinction between circulating and locked supply
 
-## Tokenomics Components
+### 2. **Advanced Performance Analytics**
+- **8-Week Rolling History**: Tracks performance over 8 weeks for stability
+- **Standard Deviation Analysis**: Rewards players who perform above league average
+- **Variance Penalty**: Penalizes inconsistent performers regardless of average
+- **League-Wide Statistics**: Real-time calculation of league averages and distributions
 
-### 1. Fixed Trading Fee System
-- **Fee Rate**: 0.25% on all trades (FIXED - no changes)
-- **Purpose**: Generates protocol revenue for staking rewards
-- **Collection**: Fees are collected in the contract and distributed weekly to stakers
-- **Transparency**: Users know exactly what they'll pay - no surprises
+### 3. **Sophisticated Staking Mechanics**
+- **Performance-Frozen Multipliers**: Staking rewards locked at time of stake
+- **Tiered Reward System**: 20-200% multipliers based on performance tiers
+- **Variance Impact**: High variance players get reduced staking rewards
+- **Supply Tracking**: Staked tokens move from circulating to locked supply
 
-### 2. Player-Specific Staking System
-- **Lock Period**: 7 days (NFL week duration)
-- **Base Reward Rate**: 0.5% of staked amount per week
-- **Performance Multiplier**: Rewards scale based on player's recent performance
-- **Individual Staking**: Users stake specific player tokens, not generic protocol tokens
-- **Benefits**: 
-  - Earn passive income from trading activity
-  - Higher rewards for well-performing players
-  - Support protocol stability
-  - Long-term holder incentives
+## Enhanced Tokenomics Components
 
-#### Performance Multiplier Calculation
+### 1. **Robust Burn Mechanics**
+
+#### Direct Performance-to-Burn Formula
 ```
-if (currentPPR > lastWeekPPR) {
-    // Good performance = higher rewards
-    improvement = currentPPR - lastWeekPPR;
-    bonus = min(improvement * 5, 100); // Max 100% bonus
-    multiplier = 100 + bonus; // 100% to 200%
-} else if (currentPPR < lastWeekPPR) {
-    // Bad performance = lower rewards
-    decline = lastWeekPPR - currentPPR;
-    penalty = min(decline * 3, 80); // Max 80% penalty
-    multiplier = max(100 - penalty, 20); // 20% to 100%
+performanceRatio = playerPerformanceScore / leagueAveragePPR
+
+if (performanceRatio >= 100) {
+    // Above average = BURN tokens
+    burnPercentage = calculateBurnPercentage(performanceRatio)
+    burnAmount = playerSupply * burnPercentage / 10000
 } else {
-    // Same performance = base rewards
-    multiplier = 100;
+    // Below average = EMIT tokens (limited)
+    emissionPercentage = calculateEmissionPercentage(performanceRatio)
+    emissionAmount = playerSupply * emissionPercentage / 10000
 }
 ```
 
-### 3. Improved Supply Change Mechanics
+#### Burn Percentage Calculation
+- **Base Target**: 5% of circulating supply per week
+- **Performance Scaling**: 1-10% based on performance ratio
+- **Maximum Burn**: 10% of supply per week (prevents excessive deflation)
+- **Minimum Burn**: 1% of supply per week (ensures meaningful impact)
 
-#### Performance-Based Supply Formula
+#### Example Burn Scenarios:
+- **Average Performer** (100% of league average): 5% burn
+- **Elite Performer** (150% of league average): 7.5% burn
+- **Superstar** (200% of league average): 10% burn (capped)
+- **Below Average** (80% of league average): 1% emission
+- **Poor Performer** (50% of league average): 2% emission (capped)
+
+### 2. **Advanced Performance Scoring**
+
+#### Performance Score Formula
 ```
-baseRate = playerSupply * 0.1% // Base rate of 0.1%
+baseScore = playerAveragePPR
+deviationBonus = calculateStandardDeviationBonus(player, league)
+variancePenalty = calculateVariancePenalty(player, league)
+performanceScore = baseScore + deviationBonus - variancePenalty
+```
 
-if (performanceChange > 0) {
-    // Good performance = BURN tokens (deflationary pressure)
-    improvement = performanceChange;
-    burnMultiplier = min(improvement * 2, 10); // Max 10x multiplier
-    burnAmount = baseRate * burnMultiplier / 10;
-} else if (performanceChange < 0) {
-    // Bad performance = EMIT tokens (inflationary pressure)
-    decline = abs(performanceChange);
-    emissionMultiplier = min(decline, 5); // Max 5x multiplier
-    emissionAmount = baseRate * emissionMultiplier / 10;
+#### Standard Deviation Bonus
+- **Above Average**: 150% bonus for 1 standard deviation above mean
+- **Below Average**: 50% bonus for 1 standard deviation below mean
+- **Scaling**: Linear scaling based on deviation magnitude
+
+#### Variance Penalty
+- **High Variance**: Up to 75% penalty for inconsistent performance
+- **Normalized**: Variance calculated relative to league average
+- **Protection**: Prevents negative performance scores
+
+### 3. **Enhanced Staking System**
+
+#### Performance-Frozen Multipliers
+When a user stakes tokens, the performance multiplier is **frozen at that moment** and remains constant for the duration of the stake. This prevents gaming the system and rewards early believers.
+
+#### Tiered Multiplier System
+```
+if (performanceRatio >= 120%) {
+    // Elite tier: 150-200% multiplier
+    multiplier = 150 + (performanceRatio - 120) * 5
+} else if (performanceRatio >= 100%) {
+    // Above average: 100-150% multiplier
+    multiplier = 100 + (performanceRatio - 100) * 2.5
+} else if (performanceRatio >= 80%) {
+    // Below average: 50-100% multiplier
+    multiplier = 100 - (100 - performanceRatio) * 2.5
+} else {
+    // Poor performers: 20-50% multiplier
+    multiplier = 50 - (80 - performanceRatio) * 1.5
 }
 ```
 
-#### Key Improvements:
-- **Smaller Base Rate**: 0.1% instead of 1% (less volatile)
-- **Better Scaling**: Performance improvement/decline affects magnitude
-- **Capped Multipliers**: Prevents excessive supply changes
-- **Intuitive Logic**: Good performance = burn (deflationary), bad performance = emit (inflationary)
+#### Variance Impact on Staking
+- **High Variance Penalty**: Up to 25% reduction in staking rewards
+- **Consistency Bonus**: Low variance players get full multiplier
+- **Minimum Floor**: 20% minimum multiplier regardless of performance
 
-#### Example Calculations:
-- Player with 1M tokens, 10 PPR improvement: burn = 1M * 0.1% * 2 = 2,000 tokens
-- Player with 1M tokens, 5 PPR decline: emit = 1M * 0.1% * 1 = 1,000 tokens
-- Player with 1M tokens, 20 PPR improvement: burn = 1M * 0.1% * 10 = 10,000 tokens (capped)
+### 4. **Supply Management System**
 
-## Weekly Cycle
+#### Supply Categories
+- **Total Supply**: Fixed at 50M tokens (can only decrease through burns)
+- **Circulating Supply**: Available for trading (decreases with burns, increases with emissions)
+- **Locked Supply**: Tokens staked in the protocol (moves between circulating and locked)
 
-### 1. Player Updates
-- Admin calls `updatePlayerWeek()` with new PPR points
-- System calculates burn/emission based on performance change
-- Week data is updated with totals
+#### Supply Flow Mechanics
+```
+// Staking
+circulatingSupply -= stakeAmount
+lockedSupply += stakeAmount
 
-### 2. Week Processing
-- Admin calls `processWeekEnd()` after all players updated
-- Staking rewards are distributed based on performance multipliers
-- Protocol moves to next week
-- Trading fees are allocated for next week's rewards
+// Unstaking
+lockedSupply -= stakeAmount
+circulatingSupply += stakeAmount
 
-### 3. Staking Operations
-- Users can stake/unstake individual player tokens
-- Rewards accumulate weekly with performance-based multipliers
-- Lock period ensures commitment to protocol
+// Burning
+circulatingSupply -= burnAmount
+
+// Emitting
+circulatingSupply += emissionAmount
+```
+
+## Weekly Cycle Mechanics
+
+### 1. **Player Performance Updates**
+```
+updatePlayerWeek(player, pprPoints) {
+    // Update 8-week rolling history
+    updatePerformanceHistory(player, pprPoints)
+    
+    // Calculate new performance score
+    performanceScore = calculatePerformanceScore(player)
+    
+    // Calculate burn/emission based on performance
+    (burnAmount, emissionAmount) = calculateEnhancedTokenomics(player, pprPoints)
+    
+    // Execute supply changes
+    if (burnAmount > 0) burnTokens(player, burnAmount)
+    if (emissionAmount > 0) emitTokens(player, emissionAmount)
+}
+```
+
+### 2. **League Statistics Calculation**
+```
+calculateLeagueStats() {
+    // Calculate league-wide averages
+    averagePPR = sum(allPlayerAveragePPR) / activePlayers
+    
+    // Calculate standard deviation
+    standardDeviation = sqrt(sum((playerPPR - averagePPR)^2) / activePlayers)
+    
+    // Calculate total variance
+    totalVariance = sum(allPlayerVariance)
+}
+```
+
+### 3. **Staking Reward Distribution**
+```
+distributeEnhancedStakingRewards() {
+    // Use frozen multipliers from stake time
+    for each stake {
+        reward = baseReward * frozenMultiplier / 100
+        mintRewards(user, reward)
+    }
+}
+```
 
 ## Economic Benefits
 
 ### For Traders:
-- **Transparent fees**: Always 0.25% - no surprises
-- **Performance-based price discovery**: Supply changes create natural price pressure
-- **No hidden costs**: Clear fee structure
+- **Predictable Supply Changes**: Clear relationship between performance and supply
+- **Meaningful Impact**: 1-10% supply changes create real price pressure
+- **Performance-Based Pricing**: Supply changes reflect actual player value
+- **Transparent Mechanics**: All calculations are on-chain and verifiable
 
 ### For Stakers:
-- **Player-specific rewards**: Stake tokens of players you believe in
-- **Performance bonuses**: Higher rewards for well-performing players
-- **Passive income**: Earn from trading activity
-- **Long-term value**: Burns create deflationary pressure
+- **Performance-Frozen Rewards**: Lock in good multipliers early
+- **Tiered System**: Elite performers get up to 200% rewards
+- **Consistency Rewards**: Low variance players get bonus rewards
+- **Supply Appreciation**: Burns increase value of remaining tokens
 
 ### For the Protocol:
-- **Sustainable revenue**: Fixed trading fees provide consistent income
-- **Natural price discovery**: Supply changes beyond just demand
-- **Incentivized participation**: Multiple ways to earn and participate
+- **Sustainable Economics**: Meaningful burns create long-term value
+- **Performance Alignment**: Token economics directly tied to player success
+- **Anti-Gaming**: Frozen multipliers prevent manipulation
+- **Natural Price Discovery**: Supply changes beyond just demand
 
-## Supply Pressure Analysis
+## Advanced Analytics Features
 
-### Deflationary Forces:
-1. **Performance Burns**: Good PPR weeks reduce supply
-2. **Trading Fee Collection**: Fees collected reduce circulating supply
-3. **Staking Locks**: Tokens locked reduce available supply
+### 1. **Performance History Tracking**
+- **8-Week Rolling Window**: Balances recent performance with historical data
+- **Circular Buffer**: Efficient storage of historical PPR data
+- **Variance Calculation**: Real-time calculation of performance consistency
 
-### Inflationary Forces:
-1. **Bad Performance Emissions**: Limited compensation for poor weeks
-2. **Staking Rewards**: New tokens minted for stakers (but performance-based)
+### 2. **League-Wide Statistics**
+- **Dynamic Averages**: League average updates weekly
+- **Standard Deviation**: Measures performance distribution across league
+- **Variance Analysis**: Tracks consistency across all players
 
-### Net Effect:
-- **Long-term**: Deflationary due to performance burns and fee collection
-- **Short-term**: Balanced through staking rewards and emissions
-- **Natural**: Supply changes create price discovery beyond just demand
+### 3. **Performance Scoring**
+- **Multi-Factor Analysis**: Combines average, deviation, and variance
+- **Normalized Metrics**: All calculations relative to league performance
+- **Anti-Manipulation**: Prevents gaming through multiple data points
 
 ## Risk Management
 
-### 1. Supply Change Caps
-- Maximum 10x burn multiplier prevents excessive deflation
-- Maximum 5x emission multiplier prevents inflationary spirals
-- Base rate of 0.1% keeps changes manageable
+### 1. **Supply Change Limits**
+- **Maximum Burn**: 10% per week prevents excessive deflation
+- **Minimum Burn**: 1% per week ensures meaningful impact
+- **Emission Caps**: 2% maximum emission prevents inflation
 
-### 2. Performance Multiplier Limits
-- Maximum 200% reward multiplier (100% bonus)
-- Minimum 20% reward multiplier (80% penalty)
-- Gradual scaling prevents market shocks
+### 2. **Performance Multiplier Limits**
+- **Maximum Multiplier**: 200% prevents excessive rewards
+- **Minimum Multiplier**: 20% ensures some rewards for all stakers
+- **Variance Caps**: 25% maximum variance penalty
 
-### 3. Staking Requirements
-- 7-day lock prevents rapid speculation
-- Individual player staking creates targeted incentives
-- Performance-based rewards align with player success
-
-### 4. Zero PPR Protection
-- Injured players maintain price discovery
-- No artificial supply pressure during injuries
+### 3. **Staking Protection**
+- **Frozen Multipliers**: Prevents timing-based manipulation
+- **Lock Periods**: 7-day minimum stake duration
+- **Supply Tracking**: Prevents double-counting of staked tokens
 
 ## Implementation Details
 
 ### Smart Contract Functions:
 
-#### Player-Specific Staking:
-- `stakePlayerTokens(address player, uint256 amount)`: Stake specific player tokens
-- `unstakePlayerTokens(uint256 stakeIndex)`: Withdraw after lock period
-- `claimPlayerRewards(uint256 stakeIndex)`: Claim accumulated rewards
-- `calculatePlayerStakingRewards(address user, uint256 stakeIndex)`: View pending rewards
+#### Enhanced Performance Tracking:
+- `updatePlayerWeek(address player, uint256 pprPoints)`: Update with full analytics
+- `_updatePlayerPerformanceHistory(address player, uint256 pprPoints)`: Update 8-week history
+- `_calculatePerformanceScore(address player)`: Calculate advanced performance score
+- `_calculateLeagueStats()`: Calculate league-wide statistics
 
-#### Admin:
-- `updatePlayerWeek(address player, uint256 pprPoints)`: Update player performance
-- `processWeekEnd()`: Process weekly rewards and advance week
-- `updateMarketCap(address player, uint256 marketCap)`: Update market data
+#### Enhanced Tokenomics:
+- `_calculateEnhancedTokenomics(address player, uint256 pprPoints)`: Calculate burn/emission
+- `_calculateBurnPercentage(uint256 performanceRatio, uint256 playerSupply)`: Calculate burn rate
+- `_calculateEmissionPercentage(uint256 performanceRatio, uint256 playerSupply)`: Calculate emission rate
 
-#### View:
-- `getUserPlayerStakes(address user)`: View all user staking positions
-- `getPlayerTotalStaked(address player)`: View total staked per player
-- `getPerformanceMultiplier(address player)`: Get current reward multiplier
+#### Enhanced Staking:
+- `stakePlayerTokens(address player, uint256 amount)`: Stake with frozen multiplier
+- `calculateEnhancedStakingRewards(address user, uint256 stakeIndex)`: Calculate rewards
+- `_calculateStakingMultiplier(address player)`: Calculate current multiplier
+
+#### Supply Management:
+- `getSupplyInfo()`: Get total, circulating, and locked supply
+- `circulatingSupply`: Public variable tracking available supply
+- `lockedSupply`: Public variable tracking staked supply
 
 ### Events:
-- `PlayerStaked`: User stakes player tokens
-- `PlayerUnstaked`: User withdraws player tokens
-- `PlayerRewardsClaimed`: User claims player-specific rewards
-- `TokensBurned`: Player tokens burned
-- `TokensEmitted`: Player tokens emitted
-- `WeekProcessed`: Weekly cycle completed
+- `WeekUpdated`: Player performance updated with score
+- `TokensBurned`: Tokens burned with percentage
+- `PlayerStaked`: Staking with performance multiplier
+- `PlayerRewardsClaimed`: Rewards claimed with multiplier
+- `LeagueStatsUpdated`: League statistics updated
 
 ## Sustainability Metrics
 
 ### Revenue Sources:
-1. Trading fees (0.25% per trade)
-2. Protocol growth through burns
+1. **Trading fees** (0.25% per trade)
+2. **Performance burns** (1-10% of supply weekly)
+3. **Protocol growth** through supply appreciation
 
 ### Cost Structure:
-1. Staking rewards (0.5% base + performance multipliers)
-2. Gas costs for operations
+1. **Staking rewards** (20-200% multipliers)
+2. **Gas costs** for operations
+3. **Performance tracking** computational costs
 
 ### Break-even Analysis:
-- Protocol becomes profitable when trading volume exceeds staking rewards
-- Burns create additional value through supply reduction
-- Performance-based rewards create natural demand for well-performing players
+- **High Volume**: Trading fees exceed staking rewards
+- **Performance Burns**: Create additional value through supply reduction
+- **Elite Performers**: Generate more burns than emissions
+- **Consistent Players**: Provide stable staking rewards
 
 ## Future Enhancements
 
 ### Potential Upgrades:
-1. **USDC Rewards**: Convert trading fees to USDC for stakers
-2. **Governance Tokens**: Stakers earn governance rights
-3. **Tiered Staking**: Different lock periods with different rewards
-4. **Performance Bonuses**: Additional rewards for top-performing stakers
+1. **Dynamic Burn Targets**: Adjust burn rates based on market conditions
+2. **Performance NFTs**: Mint NFTs for exceptional performances
+3. **Governance Integration**: Stakers earn governance rights
+4. **Cross-Player Analytics**: Compare performance across positions
 
 ### Scalability Considerations:
-1. **Batch Processing**: Process multiple players in single transaction
-2. **Gas Optimization**: Minimize transaction costs
+1. **Batch Processing**: Process multiple players efficiently
+2. **Gas Optimization**: Minimize computational costs
 3. **Layer 2 Integration**: Scale to higher transaction volumes
+4. **Off-Chain Analytics**: Move complex calculations off-chain
 
 ## Conclusion
 
-This improved tokenomics system creates a sustainable, long-running protocol that:
-- **Keeps trading fees simple and transparent** (0.25% fixed)
-- **Creates natural price discovery** through supply changes
-- **Rewards active participation** through player-specific staking
-- **Aligns incentives** between all protocol participants
-- **Protects injured players** from artificial supply changes
-- **Generates sustainable revenue** through trading fees
+This enhanced tokenomics system represents a **paradigm shift** in player token economics:
 
-The system is designed to be self-sustaining and can scale with the protocol's growth while maintaining economic balance and user incentives. The combination of fixed fees, performance-based staking, and supply changes creates a robust ecosystem that rewards good performance and creates natural price discovery beyond just market demand. 
+- **Direct Performance Impact**: PPR directly affects token supply in meaningful ways
+- **Sophisticated Analytics**: Standard deviation and variance create nuanced performance evaluation
+- **Anti-Gaming Mechanics**: Frozen multipliers and multi-factor analysis prevent manipulation
+- **Supply Transparency**: Clear separation between circulating and locked supply
+- **Sustainable Economics**: Meaningful burns create long-term value appreciation
+
+The system rewards **consistency**, punishes **volatility**, and creates **natural price discovery** through supply mechanics that directly reflect player performance. This creates a truly robust and sustainable player token economy that aligns incentives between players, traders, and stakers while providing meaningful economic impact. 
