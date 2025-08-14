@@ -1,0 +1,4 @@
+---
+description: I want every change to be pushed to the repository as a PR. I want a central file that can be iterated upon, and not just saved locally
+alwaysApply: false
+---
