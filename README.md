@@ -28,13 +28,13 @@ A revolutionary player token protocol that implements **robust staking and burn 
 performanceRatio = playerPerformanceScore / leagueAveragePPR
 
 if (performanceRatio >= 100) {
-    // Above average = BURN tokens
+    // Above average = BURN from treasury (deflationary)
     burnPercentage = calculateBurnPercentage(performanceRatio)
-    burnAmount = playerSupply * burnPercentage / 10000
+    burnAmount = protocolTreasury * burnPercentage / 10000
 } else {
-    // Below average = EMIT tokens (limited)
+    // Below average = EMIT to treasury (inflationary, limited)
     emissionPercentage = calculateEmissionPercentage(performanceRatio)
-    emissionAmount = playerSupply * emissionPercentage / 10000
+    emissionAmount = protocolTreasury * emissionPercentage / 10000
 }
 ```
 
@@ -115,10 +115,12 @@ lockedSupply += stakeAmount
 lockedSupply -= stakeAmount
 circulatingSupply += stakeAmount
 
-// Burning
+// Burning from treasury
+protocolTreasury -= burnAmount
 circulatingSupply -= burnAmount
 
-// Emitting
+// Emitting to treasury
+protocolTreasury += emissionAmount
 circulatingSupply += emissionAmount
 ```
 
@@ -128,6 +130,27 @@ circulatingSupply += emissionAmount
 - **PlayerToken.sol**: Main contract with enhanced tokenomics
 - **Enhanced API**: Complete interface for all new features
 - **Frontend Components**: Updated UI for new functionality
+
+### Protocol Treasury System
+The protocol now implements a **treasury-based tokenomics system** that protects user holdings while creating meaningful supply dynamics:
+
+#### Treasury Operations
+- **Treasury Source**: Trading fees (0.25%) + optional owner contributions
+- **Burn Source**: Protocol treasury (never user balances)
+- **Emission Destination**: Protocol treasury (never user balances)
+- **Reward Source**: Trading fees + treasury funds
+
+#### User Protection
+- **No Balance Touching**: User token holdings are never burned or emitted
+- **Staking Safety**: Staked tokens remain safe from burns/emissions
+- **Reward Security**: Rewards come from treasury, not user balances
+
+#### Flywheel Mechanism
+```
+User buys player token → User stakes token (optional) → Staked tokens get treasury rewards → 
+Treasury supply influenced by player performance → Staking multiplier based on performance → 
+Users get rewards from trading fees + treasury → Users buy more tokens with deflationary supply
+```
 
 ### Core Functions
 
@@ -156,6 +179,8 @@ function _calculateStakingMultiplier(address player) internal view returns (uint
 #### Supply Management
 ```solidity
 function getSupplyInfo() external view returns (uint256 total, uint256 circulating, uint256 locked)
+function getTreasuryInfo() external view returns (uint256 treasury, uint256 tradingFees)
+function addTreasuryFunds(uint256 amount) external onlyOwner
 ```
 
 ## 🧪 Testing

@@ -33,6 +33,7 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     uint256 public lastWeekUpdate;
     uint256 public circulatingSupply;
     uint256 public lockedSupply;
+    uint256 public protocolTreasury; // Tokens held by protocol for operations
     
     struct PlayerStats {
         uint256 lastWeekPPR;
@@ -99,11 +100,13 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     event TradingFeeCollected(uint256 amount);
     event WeekProcessed(uint256 weekNumber, uint256 totalBurn, uint256 totalEmission, uint256 stakingRewards, uint256 leagueAveragePPR);
     event LeagueStatsUpdated(uint256 week, uint256 averagePPR, uint256 standardDeviation, uint256 totalVariance);
+    event TreasuryUpdated(uint256 newTreasuryAmount, uint256 changeAmount, bool isBurn);
     
     constructor() ERC20("Player Stock Token", "PST") Ownable(msg.sender) {
         _mint(msg.sender, INITIAL_SUPPLY);
         circulatingSupply = INITIAL_SUPPLY;
         lockedSupply = 0;
+        protocolTreasury = 0; // Initialize treasury
         currentWeek = 1;
         lastWeekUpdate = block.timestamp;
     }
@@ -310,8 +313,8 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     // ========== ENHANCED TOKENOMICS CALCULATIONS ==========
     
     function _calculateEnhancedTokenomics(address player, uint256 pprPoints) internal view returns (uint256 burnAmount, uint256 emissionAmount) {
-        PlayerStats storage stats = playerStats[player];
-        uint256 playerSupply = balanceOf(player);
+        // Remove playerSupply calculation - we use treasury instead
+        // uint256 playerSupply = balanceOf(player);
         
         // No changes for 0 PPR (injured players)
         if (pprPoints == 0) {
@@ -329,13 +332,13 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
             uint256 performanceRatio = performanceScore * 100 / league.averagePPR;
             
             if (performanceRatio >= 100) {
-                // Above average performance = BURN tokens
-                uint256 burnPercentage = _calculateBurnPercentage(performanceRatio, playerSupply);
-                burnAmount = playerSupply * burnPercentage / 10000; // Basis points
+                // Above average performance = BURN from treasury (deflationary)
+                uint256 burnPercentage = _calculateBurnPercentage(performanceRatio);
+                burnAmount = protocolTreasury * burnPercentage / 10000; // Use treasury instead of playerSupply
             } else {
-                // Below average performance = EMIT tokens (limited)
-                uint256 emissionPercentage = _calculateEmissionPercentage(performanceRatio, playerSupply);
-                emissionAmount = playerSupply * emissionPercentage / 10000; // Basis points
+                // Below average performance = EMIT to treasury (inflationary, but limited)
+                uint256 emissionPercentage = _calculateEmissionPercentage(performanceRatio);
+                emissionAmount = protocolTreasury * emissionPercentage / 10000; // Use treasury instead of playerSupply
             }
         }
         
@@ -345,7 +348,7 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         }
     }
     
-    function _calculateBurnPercentage(uint256 performanceRatio, uint256 playerSupply) internal view returns (uint256) {
+    function _calculateBurnPercentage(uint256 performanceRatio) internal pure returns (uint256) {
         // Base burn rate based on performance ratio
         uint256 baseBurnRate = WEEKLY_BURN_TARGET_BPS; // 5% target
         
@@ -369,7 +372,7 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         return burnPercentage;
     }
     
-    function _calculateEmissionPercentage(uint256 performanceRatio, uint256 playerSupply) internal view returns (uint256) {
+    function _calculateEmissionPercentage(uint256 performanceRatio) internal pure returns (uint256) {
         // Limited emission for below-average performance
         uint256 baseEmissionRate = 100; // 1% base emission
         
@@ -538,9 +541,25 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         return baseMultiplier;
     }
     
-    function _distributeEnhancedStakingRewards(LeagueStats memory league) internal returns (uint256) {
-        uint256 totalRewards = totalTradingFees * BASE_STAKING_REWARD_BPS / 10000;
-        totalTradingFees = totalTradingFees - totalRewards;
+    function _distributeEnhancedStakingRewards(LeagueStats memory /* league */) internal returns (uint256) {
+        // Calculate total rewards from trading fees + treasury
+        uint256 tradingFeeRewards = totalTradingFees * BASE_STAKING_REWARD_BPS / 10000;
+        uint256 treasuryRewards = protocolTreasury * BASE_STAKING_REWARD_BPS / 10000;
+        uint256 totalRewards = tradingFeeRewards + treasuryRewards;
+        
+        // Use trading fees first
+        if (totalTradingFees >= tradingFeeRewards) {
+            totalTradingFees = totalTradingFees - tradingFeeRewards;
+        } else {
+            totalTradingFees = 0;
+        }
+        
+        // Supplement with treasury if needed
+        if (protocolTreasury >= treasuryRewards) {
+            protocolTreasury = protocolTreasury - treasuryRewards;
+        } else {
+            protocolTreasury = 0;
+        }
         
         return totalRewards;
     }
@@ -575,22 +594,33 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     // ========== INTERNAL FUNCTIONS ==========
     
     function _burnTokens(address player, uint256 burnAmount, uint256 pprPoints) internal {
-        if (burnAmount > 0) {
-            _burn(player, burnAmount);
-            playerStats[player].totalBurned = playerStats[player].totalBurned + burnAmount;
+        if (burnAmount > 0 && burnAmount <= protocolTreasury) {
+            // Burn from treasury instead of player balance
+            _burn(address(this), burnAmount);
+            protocolTreasury = protocolTreasury - burnAmount;
             circulatingSupply = circulatingSupply - burnAmount;
             
-            uint256 burnPercentage = burnAmount * 10000 / balanceOf(player);
+            // Update player stats (but don't burn from their balance)
+            playerStats[player].totalBurned = playerStats[player].totalBurned + burnAmount;
+            
+            uint256 burnPercentage = burnAmount * 10000 / protocolTreasury;
             emit TokensBurned(player, burnAmount, pprPoints, burnPercentage);
+            emit TreasuryUpdated(protocolTreasury, burnAmount, true); // true for burn
         }
     }
     
     function _emitTokens(address player, uint256 emissionAmount, uint256 pprPoints) internal {
         if (emissionAmount > 0) {
-            _mint(player, emissionAmount);
-            playerStats[player].totalEmitted = playerStats[player].totalEmitted + emissionAmount;
+            // Mint to treasury instead of player
+            _mint(address(this), emissionAmount);
+            protocolTreasury = protocolTreasury + emissionAmount;
             circulatingSupply = circulatingSupply + emissionAmount;
+            
+            // Update player stats (but don't mint to their balance)
+            playerStats[player].totalEmitted = playerStats[player].totalEmitted + emissionAmount;
+            
             emit TokensEmitted(player, emissionAmount, pprPoints);
+            emit TreasuryUpdated(protocolTreasury, emissionAmount, false); // false for emission
         }
     }
     
@@ -636,6 +666,10 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
         return (totalSupply(), circulatingSupply, lockedSupply);
     }
     
+    function getTreasuryInfo() external view returns (uint256 treasury, uint256 tradingFees) {
+        return (protocolTreasury, totalTradingFees);
+    }
+    
     // ========== ADMIN FUNCTIONS ==========
     
     function pause() external onlyOwner {
@@ -649,5 +683,15 @@ contract PlayerToken is ERC20, Ownable, Pausable, ReentrancyGuard {
     function updateMarketCap(address player, uint256 marketCap) external onlyOwner {
         require(playerStats[player].isActive, "Player not found");
         playerStats[player].marketCap = marketCap;
+    }
+    
+    // Optional: Allow owner to add initial treasury funds
+    function addTreasuryFunds(uint256 amount) external onlyOwner {
+        require(amount > 0, "Amount must be greater than 0");
+        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
+        
+        _transfer(msg.sender, address(this), amount);
+        protocolTreasury = protocolTreasury + amount;
+        emit TreasuryUpdated(protocolTreasury, amount, false); // false for emission
     }
 } 

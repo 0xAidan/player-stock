@@ -32,13 +32,13 @@ The Player Stock protocol now implements a **revolutionary robust tokenomics sys
 performanceRatio = playerPerformanceScore / leagueAveragePPR
 
 if (performanceRatio >= 100) {
-    // Above average = BURN tokens
+    // Above average = BURN from treasury (deflationary)
     burnPercentage = calculateBurnPercentage(performanceRatio)
-    burnAmount = playerSupply * burnPercentage / 10000
+    burnAmount = protocolTreasury * burnPercentage / 10000
 } else {
-    // Below average = EMIT tokens (limited)
+    // Below average = EMIT to treasury (inflationary, limited)
     emissionPercentage = calculateEmissionPercentage(performanceRatio)
-    emissionAmount = playerSupply * emissionPercentage / 10000
+    emissionAmount = protocolTreasury * emissionPercentage / 10000
 }
 ```
 
@@ -108,6 +108,28 @@ if (performanceRatio >= 120%) {
 - **Total Supply**: Fixed at 50M tokens (can only decrease through burns)
 - **Circulating Supply**: Available for trading (decreases with burns, increases with emissions)
 - **Locked Supply**: Tokens staked in the protocol (moves between circulating and locked)
+- **Protocol Treasury**: Tokens held by protocol for operations (source of burns, destination of emissions)
+
+#### Protocol Treasury System
+The protocol implements a **treasury-based tokenomics system** that protects user holdings while creating meaningful supply dynamics:
+
+##### Treasury Operations
+- **Treasury Source**: Trading fees (0.25%) + optional owner contributions
+- **Burn Source**: Protocol treasury (never user balances)
+- **Emission Destination**: Protocol treasury (never user balances)
+- **Reward Source**: Trading fees + treasury funds
+
+##### User Protection
+- **No Balance Touching**: User token holdings are never burned or emitted
+- **Staking Safety**: Staked tokens remain safe from burns/emissions
+- **Reward Security**: Rewards come from treasury, not user balances
+
+##### Flywheel Mechanism
+```
+User buys player token → User stakes token (optional) → Staked tokens get treasury rewards → 
+Treasury supply influenced by player performance → Staking multiplier based on performance → 
+Users get rewards from trading fees + treasury → Users buy more tokens with deflationary supply
+```
 
 #### Supply Flow Mechanics
 ```
@@ -119,10 +141,12 @@ lockedSupply += stakeAmount
 lockedSupply -= stakeAmount
 circulatingSupply += stakeAmount
 
-// Burning
+// Burning from treasury
+protocolTreasury -= burnAmount
 circulatingSupply -= burnAmount
 
-// Emitting
+// Emitting to treasury
+protocolTreasury += emissionAmount
 circulatingSupply += emissionAmount
 ```
 
@@ -247,8 +271,11 @@ distributeEnhancedStakingRewards() {
 
 #### Supply Management:
 - `getSupplyInfo()`: Get total, circulating, and locked supply
+- `getTreasuryInfo()`: Get treasury and trading fee information
+- `addTreasuryFunds(uint256 amount)`: Add funds to treasury (owner only)
 - `circulatingSupply`: Public variable tracking available supply
 - `lockedSupply`: Public variable tracking staked supply
+- `protocolTreasury`: Public variable tracking treasury funds
 
 ### Events:
 - `WeekUpdated`: Player performance updated with score
@@ -256,6 +283,7 @@ distributeEnhancedStakingRewards() {
 - `PlayerStaked`: Staking with performance multiplier
 - `PlayerRewardsClaimed`: Rewards claimed with multiplier
 - `LeagueStatsUpdated`: League statistics updated
+- `TreasuryUpdated`: Treasury operations tracked
 
 ## Sustainability Metrics
 
