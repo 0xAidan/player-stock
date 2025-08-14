@@ -57,6 +57,11 @@ export interface SupplyInfo {
   locked: number;
 }
 
+export interface TreasuryInfo {
+  treasury: number;
+  tradingFees: number;
+}
+
 export class NFLDataService {
   private apiKey: string;
 
@@ -338,6 +343,19 @@ export class PlayerTokenService {
       };
     } catch (error) {
       console.error('Error getting supply info:', error);
+      throw error;
+    }
+  }
+
+  async getTreasuryInfo(): Promise<TreasuryInfo> {
+    try {
+      const treasury = await this.contract.getTreasuryInfo();
+      return {
+        treasury: parseFloat(ethers.utils.formatEther(treasury.treasury)),
+        tradingFees: parseFloat(ethers.utils.formatEther(treasury.tradingFees))
+      };
+    } catch (error) {
+      console.error('Error getting treasury info:', error);
       throw error;
     }
   }

@@ -28,6 +28,11 @@ interface SupplyInfo {
   locked: number;
 }
 
+interface TreasuryInfo {
+  treasury: number;
+  tradingFees: number;
+}
+
 interface StakingInterfaceProps {
   players: Player[];
   userAddress?: string;
@@ -40,6 +45,7 @@ interface StakingInterfaceProps {
   getPerformanceScore: (playerId: string) => Promise<number>;
   getCurrentLeagueStats: () => Promise<LeagueStats>;
   getSupplyInfo: () => Promise<SupplyInfo>;
+  getTreasuryInfo: () => Promise<TreasuryInfo>;
 }
 
 export default function StakingInterface({
@@ -53,7 +59,8 @@ export default function StakingInterface({
   getStakingMultiplier,
   getPerformanceScore,
   getCurrentLeagueStats,
-  getSupplyInfo
+  getSupplyInfo,
+  getTreasuryInfo
 }: StakingInterfaceProps) {
   const [userStakes, setUserStakes] = useState<PlayerStakingPosition[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>('');
@@ -64,12 +71,14 @@ export default function StakingInterface({
   const [performanceScores, setPerformanceScores] = useState<Record<string, number>>({});
   const [leagueStats, setLeagueStats] = useState<LeagueStats | null>(null);
   const [supplyInfo, setSupplyInfo] = useState<SupplyInfo | null>(null);
+  const [treasuryInfo, setTreasuryInfo] = useState<TreasuryInfo | null>(null);
 
   useEffect(() => {
     if (userAddress) {
       loadUserStakes();
       loadPerformanceData();
       loadSupplyInfo();
+      loadTreasuryInfo();
     }
   }, [userAddress]);
 
@@ -121,6 +130,15 @@ export default function StakingInterface({
       setSupplyInfo(supply);
     } catch (err) {
       console.error('Error loading supply info:', err);
+    }
+  };
+
+  const loadTreasuryInfo = async () => {
+    try {
+      const treasury = await getTreasuryInfo();
+      setTreasuryInfo(treasury);
+    } catch (err) {
+      console.error('Error loading treasury info:', err);
     }
   };
 
@@ -261,6 +279,37 @@ export default function StakingInterface({
         </div>
       )}
 
+      {/* Treasury Overview */}
+      {treasuryInfo && (
+        <div className="bg-gradient-to-r from-green-50 to-yellow-50 rounded-lg shadow-md p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <Coins className="w-5 h-5 mr-2" />
+            Protocol Treasury System
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">{formatNumber(treasuryInfo.treasury)}</div>
+              <div className="text-sm text-gray-600">Treasury Balance</div>
+              <div className="text-xs text-gray-500 mt-1">Funds for burns/emissions</div>
+            </div>
+            <div className="bg-white rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-yellow-600">{formatNumber(treasuryInfo.tradingFees)}</div>
+              <div className="text-sm text-gray-600">Trading Fees</div>
+              <div className="text-xs text-gray-500 mt-1">0.25% per trade</div>
+            </div>
+          </div>
+          <div className="mt-4 bg-white rounded-lg p-4">
+            <h3 className="font-semibold text-gray-800 mb-2">How the Treasury System Works:</h3>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div>• <strong>Good Performance:</strong> Treasury burns tokens (deflationary)</div>
+              <div>• <strong>Poor Performance:</strong> Treasury receives emissions (inflationary, limited)</div>
+              <div>• <strong>Staking Rewards:</strong> Funded by trading fees + treasury</div>
+              <div>• <strong>User Protection:</strong> Your holdings are never touched</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* League Statistics */}
       {leagueStats && (
         <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg shadow-md p-6">
@@ -375,6 +424,11 @@ export default function StakingInterface({
                       : 'Poor performance - minimal rewards'
                     }
                   </div>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="text-xs text-gray-600">
+                  <strong>Reward Source:</strong> Trading fees + Treasury funds (your tokens are safe)
                 </div>
               </div>
             </div>

@@ -58,32 +58,32 @@ export default function Home() {
             <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <TrendingUp className="w-8 h-8 text-green-600" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">Performance Burns</h3>
-            <p className="text-gray-600">Good PPR weeks trigger token burns, creating deflationary pressure</p>
+            <h3 className="text-xl font-semibold mb-2">Protocol Treasury</h3>
+            <p className="text-gray-600">Treasury manages burns/emissions - your holdings are never touched</p>
           </div>
 
           <div className="text-center">
             <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Coins className="w-8 h-8 text-purple-600" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">Staking Rewards</h3>
-            <p className="text-gray-600">Stake tokens for 7 days to earn rewards from trading fees</p>
+            <h3 className="text-xl font-semibold mb-2">Safe Staking</h3>
+            <p className="text-gray-600">Stake tokens safely with rewards from trading fees + treasury</p>
           </div>
 
           <div className="text-center">
             <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <BarChart3 className="w-8 h-8 text-red-600" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">Trading Fees</h3>
-            <p className="text-gray-600">0.25% fee on trades funds staking rewards and protocol sustainability</p>
+            <h3 className="text-xl font-semibold mb-2">Performance Burns</h3>
+            <p className="text-gray-600">Good PPR weeks trigger treasury burns, creating deflationary pressure</p>
           </div>
 
           <div className="text-center">
             <div className="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-yellow-600" />
             </div>
-            <h3 className="text-xl font-semibold mb-2">Injury Protection</h3>
-            <p className="text-gray-600">Players with 0 PPR experience no supply changes, maintaining natural price discovery</p>
+            <h3 className="text-xl font-semibold mb-2">User Protection</h3>
+            <p className="text-gray-600">Your token holdings are protected from burns/emissions</p>
           </div>
 
           <div className="text-center">
@@ -142,11 +142,11 @@ export default function Home() {
               <div className="bg-gray-50 rounded-lg p-4 text-left">
                 <h4 className="font-semibold mb-2">Features:</h4>
                 <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• Stake individual player tokens</li>
-                  <li>• Performance-based reward multipliers (20% - 200%)</li>
-                  <li>• 7-day lock period aligned with NFL weeks</li>
-                  <li>• Earn from 0.25% trading fees</li>
-                  <li>• Support protocol stability</li>
+                  <li>• <strong>Safe Staking:</strong> Your tokens remain protected</li>
+                  <li>• <strong>Performance Rewards:</strong> 20% - 200% multipliers</li>
+                  <li>• <strong>Treasury Funding:</strong> Rewards from trading fees + treasury</li>
+                  <li>• <strong>7-day Lock:</strong> NFL week duration</li>
+                  <li>• <strong>Frozen Multipliers:</strong> Lock in good rates early</li>
                 </ul>
               </div>
             </div>

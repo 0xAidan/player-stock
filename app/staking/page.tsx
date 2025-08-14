@@ -108,6 +108,44 @@ export default function StakingPage() {
     return multipliers[playerId] || 100;
   };
 
+  const getPerformanceScore = async (playerId: string): Promise<number> => {
+    // Mock performance scores
+    const scores: Record<string, number> = {
+      '1': 25.5,
+      '2': 28.7,
+      '3': 24.1
+    };
+    return scores[playerId] || 0;
+  };
+
+  const getCurrentLeagueStats = async () => {
+    // Mock league stats
+    return {
+      totalActivePlayers: 3,
+      totalPPR: 78.3,
+      averagePPR: 26.1,
+      standardDeviation: 2.3,
+      totalVariance: 15.8
+    };
+  };
+
+  const getSupplyInfo = async () => {
+    // Mock supply info
+    return {
+      total: 50000000,
+      circulating: 48000000,
+      locked: 2000000
+    };
+  };
+
+  const getTreasuryInfo = async () => {
+    // Mock treasury info
+    return {
+      treasury: 1000000,
+      tradingFees: 25000
+    };
+  };
+
   // Mock wallet connection
   useEffect(() => {
     // Simulate wallet connection
@@ -166,28 +204,33 @@ export default function StakingPage() {
           getUserStakes={getUserStakes}
           getPendingRewards={getPendingRewards}
           getPerformanceMultiplier={getPerformanceMultiplier}
+          getPerformanceScore={getPerformanceScore}
+          getCurrentLeagueStats={getCurrentLeagueStats}
+          getSupplyInfo={getSupplyInfo}
+          getTreasuryInfo={getTreasuryInfo}
         />
 
         {/* Info Section */}
         <div className="mt-12 max-w-4xl mx-auto">
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-xl font-semibold mb-4">How Player Staking Works</h3>
+            <h3 className="text-xl font-semibold mb-4">How the Protocol Treasury System Works</h3>
             <div className="grid md:grid-cols-2 gap-6">
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">Performance Multipliers</h4>
+                <h4 className="font-medium text-gray-900 mb-2">Treasury Operations</h4>
                 <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• Good performance: 100% - 200% rewards</li>
-                  <li>• Poor performance: 20% - 100% rewards</li>
-                  <li>• Base rate: 0.5% of staked amount per week</li>
+                  <li>• <strong>Good Performance:</strong> Treasury burns tokens (deflationary)</li>
+                  <li>• <strong>Poor Performance:</strong> Treasury receives emissions (limited)</li>
+                  <li>• <strong>Reward Source:</strong> Trading fees + Treasury funds</li>
+                  <li>• <strong>User Protection:</strong> Your holdings are never touched</li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">Staking Rules</h4>
+                <h4 className="font-medium text-gray-900 mb-2">Staking Benefits</h4>
                 <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• 7-day lock period (NFL week duration)</li>
-                  <li>• Stake individual player tokens</li>
-                  <li>• Rewards from 0.25% trading fees</li>
-                  <li>• Automatic reward accumulation</li>
+                  <li>• <strong>Safe Staking:</strong> Your tokens remain protected</li>
+                  <li>• <strong>Performance Rewards:</strong> 20% - 200% multipliers</li>
+                  <li>• <strong>Frozen Multipliers:</strong> Lock in good rates early</li>
+                  <li>• <strong>7-day Lock:</strong> NFL week duration</li>
                 </ul>
               </div>
             </div>
