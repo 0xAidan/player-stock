@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { TrendingUp, Users, BarChart3, Wallet, Coins, Lock } from 'lucide-react'
 import TokenomicsCalculator from '@/components/TokenomicsCalculator'
-import StakingInterface from '@/components/StakingInterface'
+
 
 export default function Home() {
   return (
@@ -124,7 +124,33 @@ export default function Home() {
             </p>
           </div>
           
-          <StakingInterface className="max-w-4xl mx-auto" />
+          <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-8">
+            <div className="text-center">
+              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Staking Coming Soon</h3>
+              <p className="text-gray-600 mb-6">
+                Player-specific staking with performance-based rewards will be available once the protocol is deployed.
+              </p>
+              <Link 
+                href="/staking" 
+                className="inline-block bg-blue-600 text-white hover:bg-blue-700 font-medium py-2 px-6 rounded-lg transition-colors"
+              >
+                View Staking Demo
+              </Link>
+              <div className="bg-gray-50 rounded-lg p-4 text-left">
+                <h4 className="font-semibold mb-2">Features:</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Stake individual player tokens</li>
+                  <li>• Performance-based reward multipliers (20% - 200%)</li>
+                  <li>• 7-day lock period aligned with NFL weeks</li>
+                  <li>• Earn from 0.25% trading fees</li>
+                  <li>• Support protocol stability</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

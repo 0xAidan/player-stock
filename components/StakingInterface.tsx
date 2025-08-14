@@ -59,6 +59,8 @@ export default function StakingInterface({
   };
 
   const loadPerformanceMultipliers = async () => {
+    if (!players || players.length === 0) return;
+    
     const multipliers: Record<string, number> = {};
     for (const player of players) {
       try {
@@ -134,6 +136,7 @@ export default function StakingInterface({
   };
 
   const getPlayerName = (playerId: string) => {
+    if (!players) return 'Unknown Player';
     const player = players.find(p => p.id === playerId);
     return player ? player.name : 'Unknown Player';
   };
@@ -175,9 +178,12 @@ export default function StakingInterface({
               onChange={(e) => setSelectedPlayer(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
+              disabled={!players || players.length === 0}
             >
-              <option value="">Choose a player...</option>
-              {players.map((player) => (
+              <option value="">
+                {!players || players.length === 0 ? "No players available" : "Choose a player..."}
+              </option>
+              {players && players.map((player) => (
                 <option key={player.id} value={player.id}>
                   {player.name} ({player.team}) - {player.position}
                 </option>
